@@ -1,0 +1,9 @@
+# Binaries
+wrapper
+securewrapper
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
