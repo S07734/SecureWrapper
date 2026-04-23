@@ -32,6 +32,7 @@ You can also scope each auth key to a specific subset of connections, so one com
 - **TOFU host key verification** — SSH connections verify host keys (Trust On First Use). Rejects changed keys.
 - **BBS-style TUI** — interactive vault management with a retro terminal interface
 - **In-app upgrades** — check for updates, download, verify checksum, migrate vault automatically
+- **SSH tunneling** — DB and WinRM connections can be routed through any stored SSH connection (bastion / jumphost pattern) with one config field
 - **Hardware migration** — passphrase + one-time code export with 24-hour network-time-verified fuse, carries connections to a new machine
 - **Passphrase policy** — minimum length, character-class diversity, and common-password blocklist enforced at creation and rotation, with a live strength meter
 - **Self-destructing** — 5 failed attempts (persistent across sessions) silently wipes the vault
@@ -176,6 +177,19 @@ All three must match to decrypt the main vault. Auth key access uses 2-factor (a
 - Also offered at login when vault is incompatible with current binary
 - Vault wipe preserves backup files and known_hosts
 - **Important:** Portable backups are encrypted with 2 factors (no binary hash). Store them securely — anyone with the passphrase and access to the same machine can restore them. Delete old backups when no longer needed.
+
+### SSH Tunneling
+
+Databases and Windows hosts are often behind bastion / jumphost infrastructure and only reachable through SSH. Every DB and WinRM connection accepts a `Tunnel via SSH` field — name any SSH-type connection already stored in the vault. At execution:
+
+1. An SSH session is opened to the tunnel host using the stored profile
+2. A local TCP listener is bound to an ephemeral port on `127.0.0.1`
+3. The DB or WinRM client dials `127.0.0.1:<port>`; every byte is forwarded through the SSH session to the real target
+4. The tunnel and SSH session are torn down when the command finishes
+
+The TUI shows a picker of available SSH connections while editing the tunnel field. Leave blank / type `none` to disable tunneling for a connection.
+
+**Note:** when tunneling, SSH already provides encryption end-to-end to the jumphost. You may want to set the DB's SSL mode to `disable` (Postgres / MySQL) or `encrypt=disable` (SQL Server) since TLS on the inner link would see `127.0.0.1` as the hostname — useful only if the DB server has a cert for its own internal name and you want belt-and-suspenders encryption.
 
 ### Hardware Migration
 Moving the vault to new hardware (CPU swap, motherboard replacement, new host) is a distinct flow from same-machine backup because the machine fingerprint has to change.

@@ -208,7 +208,7 @@ func runConnection(args []string) {
 	switch mode {
 	case "test":
 		fmt.Print("Testing... ")
-		if err := testConn(*conn); err != nil {
+		if err := testConn(vault, *conn); err != nil {
 			fmt.Printf("FAILED: %v\n", err)
 			os.Exit(1)
 		}
@@ -288,6 +288,9 @@ func runConnection(args []string) {
 			credOutput["password"] = conn.Password
 			credOutput["database"] = conn.Database
 			credOutput["ssl_mode"] = conn.SSLMode
+			if conn.TunnelVia != "" {
+				credOutput["tunnel_via"] = conn.TunnelVia
+			}
 		case ConnWinRM:
 			credOutput["host"] = conn.Host
 			credOutput["port"] = fmt.Sprintf("%d", conn.Port)
@@ -295,6 +298,9 @@ func runConnection(args []string) {
 			credOutput["password"] = conn.Password
 			credOutput["use_https"] = fmt.Sprintf("%v", conn.UseHTTPS)
 			credOutput["insecure"] = fmt.Sprintf("%v", conn.Insecure)
+			if conn.TunnelVia != "" {
+				credOutput["tunnel_via"] = conn.TunnelVia
+			}
 		}
 		jsonBytes, _ := json.MarshalIndent(credOutput, "", "  ")
 		fmt.Println(string(jsonBytes))
@@ -333,12 +339,12 @@ func runConnection(args []string) {
 	case "db":
 		// passthrough: the SQL query (joined with spaces to allow unquoted multi-word queries)
 		query := strings.Join(passthrough, " ")
-		result = ExecuteConnectionDB(*conn, query)
+		result = ExecuteConnectionDB(vault, *conn, query)
 
 	case "winrm":
 		// passthrough: the PowerShell command (joined so "Get-Service wuauserv" works unquoted)
 		command := strings.Join(passthrough, " ")
-		result = ExecuteConnectionWinRM(*conn, command)
+		result = ExecuteConnectionWinRM(vault, *conn, command)
 
 	default:
 		fmt.Fprintf(os.Stderr, "Error: unknown mode \"--%s\"\n", mode)

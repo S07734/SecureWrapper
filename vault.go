@@ -61,6 +61,12 @@ type Connection struct {
 
 	// WinRM-specific
 	UseHTTPS bool `json:"use_https,omitempty"` // WinRM over 5986 vs plain 5985
+
+	// Tunneling — names another connection in the vault (must be SSH type).
+	// When set, DB and WinRM executors dial SSH to the tunnel host, open a
+	// local port-forward to this connection's Host:Port, and talk to
+	// 127.0.0.1:<ephemeral> instead. Empty = direct connection.
+	TunnelVia string `json:"tunnel_via,omitempty"`
 }
 
 type AuthKey struct {

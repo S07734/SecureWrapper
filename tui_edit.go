@@ -140,6 +140,7 @@ func (ec EditConnection) buildFields() []editField {
 			editField{key: "password", label: "Password", value: ec.conn.Password, masked: true},
 			editField{key: "database", label: "Database", value: ec.conn.Database},
 			editField{key: "sslmode", label: "SSL Mode", value: ec.conn.SSLMode},
+			editField{key: "tunnelvia", label: "Tunnel via SSH", value: ec.conn.TunnelVia},
 		)
 	case ConnWinRM:
 		fields = append(fields,
@@ -149,6 +150,7 @@ func (ec EditConnection) buildFields() []editField {
 			editField{key: "password", label: "Password", value: ec.conn.Password, masked: true},
 			editField{key: "usehttps", label: "Use HTTPS", value: boolToYN(ec.conn.UseHTTPS)},
 			editField{key: "insecure", label: "Skip TLS", value: boolToYN(ec.conn.Insecure)},
+			editField{key: "tunnelvia", label: "Tunnel via SSH", value: ec.conn.TunnelVia},
 		)
 	}
 
@@ -293,8 +295,9 @@ func (ec EditConnection) handleTestDecision(val string) (tea.Model, tea.Cmd) {
 		ec.mode = editModeTesting
 		ec.status = dimStyle.Render("Testing...")
 		c := ec.conn // local copy for the goroutine
+		vault := ec.vault
 		return ec, func() tea.Msg {
-			err := testConn(c)
+			err := testConn(vault, c)
 			return testResultMsg{name: c.Name, err: err}
 		}
 	}
@@ -374,6 +377,14 @@ func (ec EditConnection) applyField() (tea.Model, tea.Cmd) {
 		if ec.conn.Type == ConnWinRM && (ec.conn.Port == 5985 || ec.conn.Port == 5986) {
 			ec.conn.Port = defaultPortForType(ec.conn.Type, ec.conn.UseHTTPS)
 		}
+	case "tunnelvia":
+		// "none" / "off" / "-" / "." all mean "clear the tunnel".
+		low := strings.ToLower(val)
+		if low == "none" || low == "off" || val == "-" || val == "." {
+			ec.conn.TunnelVia = ""
+		} else {
+			ec.conn.TunnelVia = val
+		}
 	}
 
 	ec.dirty = true
@@ -406,6 +417,18 @@ func (ec EditConnection) validate() error {
 	default:
 		if strings.TrimSpace(ec.conn.Host) == "" {
 			return fmt.Errorf("Host is required.")
+		}
+	}
+	if ec.conn.TunnelVia != "" {
+		tun := ec.vault.GetConnection(ec.conn.TunnelVia)
+		if tun == nil {
+			return fmt.Errorf("Tunnel-via connection %q does not exist in the vault.", ec.conn.TunnelVia)
+		}
+		if tun.Type != ConnSSHPassword && tun.Type != ConnSSHKey {
+			return fmt.Errorf("Tunnel-via connection %q must be an SSH type (got %s).", ec.conn.TunnelVia, tun.Type)
+		}
+		if tun.Name == ec.conn.Name {
+			return fmt.Errorf("A connection cannot tunnel through itself.")
 		}
 	}
 	return nil
@@ -473,7 +496,11 @@ func (ec EditConnection) View() string {
 						highlightStyle.Render(label),
 						ec.input.View(),
 					))
-					if hint := editFieldHint(ec.conn.Type, f.key); hint != "" {
+					hint := editFieldHint(ec.conn.Type, f.key)
+					if hint == "" {
+						hint = editFieldHintFromVault(ec.vault, f.key)
+					}
+					if hint != "" {
 						b.WriteString("   " + strings.Repeat(" ", 19) + dimStyle.Render("Options: "+hint) + "\n")
 					}
 				} else {
@@ -630,4 +657,26 @@ func editFieldHint(ct ConnectionType, fieldKey string) string {
 		}
 	}
 	return ""
+}
+
+// editFieldHintFromVault returns hint text that needs vault lookup (e.g. the
+// list of SSH connections available as tunnel targets). Split from the
+// static hint function so buildFields + View can both call it.
+func editFieldHintFromVault(vault *Vault, fieldKey string) string {
+	if fieldKey != "tunnelvia" {
+		return ""
+	}
+	if vault == nil {
+		return "name of an SSH connection in the vault (leave blank for direct)"
+	}
+	var names []string
+	for _, c := range vault.ListConnections() {
+		if c.Type == ConnSSHPassword || c.Type == ConnSSHKey {
+			names = append(names, c.Name)
+		}
+	}
+	if len(names) == 0 {
+		return "no SSH connections in vault — leave blank for direct connection"
+	}
+	return "SSH profiles: " + strings.Join(names, ", ") + "  (blank/none = direct)"
 }

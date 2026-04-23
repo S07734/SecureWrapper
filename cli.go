@@ -3,8 +3,10 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -39,7 +41,7 @@ func pause() {
 	readLine(dimStyle.Render("  Press enter to continue..."))
 }
 
-func testConn(conn Connection) error {
+func testConn(vault *Vault, conn Connection) error {
 	switch conn.Type {
 	case ConnSSHPassword:
 		return connections.TestSSH(conn.Host, conn.Port, conn.Username, conn.Password, "")
@@ -50,13 +52,13 @@ func testConn(conn Connection) error {
 	case ConnFTP:
 		return connections.TestFTP(conn.Host, conn.Port, conn.Username, conn.Password)
 	case ConnDBPostgres, ConnDBMySQL, ConnDBMSSQL:
-		r := ExecuteConnectionDB(conn, "")
+		r := ExecuteConnectionDB(vault, conn, "")
 		if r.Error != nil {
 			return r.Error
 		}
 		return nil
 	case ConnWinRM:
-		r := ExecuteConnectionWinRM(conn, "")
+		r := ExecuteConnectionWinRM(vault, conn, "")
 		if r.Error != nil {
 			return r.Error
 		}
@@ -81,16 +83,22 @@ func dbDriverForType(t ConnectionType) string {
 }
 
 // ExecuteConnectionDB runs a query against a database connection. Empty
-// query = connectivity test (ping only).
-func ExecuteConnectionDB(conn Connection, query string) connections.Result {
+// query = connectivity test (ping only). If conn.TunnelVia is set, an SSH
+// port-forward is established first and the DB dials through localhost.
+func ExecuteConnectionDB(vault *Vault, conn Connection, query string) connections.Result {
 	driver := dbDriverForType(conn.Type)
 	if driver == "" {
 		return connections.Result{Error: fmt.Errorf("connection \"%s\" is type %s, not a database", conn.Name, conn.Type)}
 	}
+	host, port, cleanup, err := resolveTunnel(vault, conn)
+	if err != nil {
+		return connections.Result{Error: err, ExitCode: 1}
+	}
+	defer cleanup()
 	return connections.ExecuteDB(connections.DBConfig{
 		Driver:   driver,
-		Host:     conn.Host,
-		Port:     conn.Port,
+		Host:     host,
+		Port:     port,
 		Username: conn.Username,
 		Password: conn.Password,
 		Database: conn.Database,
@@ -99,19 +107,73 @@ func ExecuteConnectionDB(conn Connection, query string) connections.Result {
 }
 
 // ExecuteConnectionWinRM runs a PowerShell command against a WinRM endpoint.
-// Empty command = connectivity test.
-func ExecuteConnectionWinRM(conn Connection, command string) connections.Result {
+// Empty command = connectivity test. If conn.TunnelVia is set, an SSH port-
+// forward is established first and the WinRM client talks to localhost.
+func ExecuteConnectionWinRM(vault *Vault, conn Connection, command string) connections.Result {
 	if conn.Type != ConnWinRM {
 		return connections.Result{Error: fmt.Errorf("connection \"%s\" is type %s, not WinRM", conn.Name, conn.Type)}
 	}
+	host, port, cleanup, err := resolveTunnel(vault, conn)
+	if err != nil {
+		return connections.Result{Error: err, ExitCode: 1}
+	}
+	defer cleanup()
 	return connections.ExecuteWinRM(connections.WinRMConfig{
-		Host:     conn.Host,
-		Port:     conn.Port,
+		Host:     host,
+		Port:     port,
 		Username: conn.Username,
 		Password: conn.Password,
 		UseHTTPS: conn.UseHTTPS,
 		Insecure: conn.Insecure,
 	}, command)
+}
+
+// resolveTunnel optionally wraps a connection in an SSH port-forward. If the
+// connection has no TunnelVia field (or we have no vault reference) it
+// returns the connection's own host/port and a no-op cleanup. Otherwise it
+// dials SSH through the named tunnel profile, opens a local listener
+// forwarding to the target, and returns "127.0.0.1:<ephemeral>" plus a
+// cleanup that tears down the tunnel.
+func resolveTunnel(vault *Vault, conn Connection) (string, int, func(), error) {
+	noop := func() {}
+	if conn.TunnelVia == "" || vault == nil {
+		return conn.Host, conn.Port, noop, nil
+	}
+
+	tun := vault.GetConnection(conn.TunnelVia)
+	if tun == nil {
+		return "", 0, nil, fmt.Errorf("tunnel connection %q not found in vault", conn.TunnelVia)
+	}
+	if tun.Type != ConnSSHPassword && tun.Type != ConnSSHKey {
+		return "", 0, nil, fmt.Errorf("tunnel connection %q must be SSH type, got %s", conn.TunnelVia, tun.Type)
+	}
+
+	var password, keyPath, keyPass string
+	if tun.Type == ConnSSHPassword {
+		password = tun.Password
+	} else {
+		keyPath = tun.KeyPath
+		keyPass = tun.KeyPass
+	}
+
+	sshClient, err := connections.DialSSH(tun.Host, tun.Port, tun.Username, password, keyPath, keyPass)
+	if err != nil {
+		return "", 0, nil, fmt.Errorf("SSH tunnel dial (%s): %w", conn.TunnelVia, err)
+	}
+
+	localAddr, cleanup, err := connections.OpenTunnel(sshClient, conn.Host, conn.Port)
+	if err != nil {
+		sshClient.Close()
+		return "", 0, nil, fmt.Errorf("open tunnel: %w", err)
+	}
+
+	host, portStr, splitErr := net.SplitHostPort(localAddr)
+	if splitErr != nil {
+		cleanup()
+		return "", 0, nil, fmt.Errorf("parse tunnel addr: %w", splitErr)
+	}
+	port, _ := strconv.Atoi(portStr)
+	return host, port, cleanup, nil
 }
 
 // ExecuteConnectionSSH runs a command via SSH using the connection's credentials.

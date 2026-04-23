@@ -126,6 +126,18 @@ func printHelp() {
 	fmt.Println(w("  • Local-only — remote calls are rejected"))
 	fmt.Println()
 
+	fmt.Println(h("  SSH TUNNELING"))
+	fmt.Println()
+	fmt.Println(w("  Any database or WinRM connection can be routed through a stored"))
+	fmt.Println(w("  SSH connection (bastion / jumphost). Set the \"Tunnel via SSH\""))
+	fmt.Println(w("  field on the target connection to the name of an SSH profile in"))
+	fmt.Println(w("  the vault — the wrapper opens the SSH session, forwards a local"))
+	fmt.Println(w("  port, and transparently connects through it."))
+	fmt.Println()
+	fmt.Println(d("  • DB drivers and WinRM clients stay unmodified"))
+	fmt.Println(d("  • Inner SSL/TLS may need adjusting since traffic appears to come from 127.0.0.1"))
+	fmt.Println()
+
 	fmt.Println(h("  HARDWARE MIGRATION"))
 	fmt.Println()
 	fmt.Println(w("  Moving to a new machine (new CPU, new motherboard, new host)?"))

@@ -208,6 +208,14 @@ func buildHelpContent() string {
 	b.WriteString(w("  • Local-only — remote calls are rejected") + "\n")
 	b.WriteString(w("  • Wrong binary detected before passphrase attempt") + "\n\n")
 
+	b.WriteString(h("  SSH TUNNELING") + "\n\n")
+	b.WriteString(w("  Database and WinRM connections can route through any stored SSH") + "\n")
+	b.WriteString(w("  profile (bastion / jumphost). Set \"Tunnel via SSH\" on the target") + "\n")
+	b.WriteString(w("  connection to the name of an SSH connection in the vault.") + "\n\n")
+	b.WriteString(d("  • The TUI shows a picker of available SSH connections while editing") + "\n")
+	b.WriteString(d("  • Leave blank / type \"none\" to disable tunneling") + "\n")
+	b.WriteString(d("  • Inner TLS may need adjusting (traffic appears to come from 127.0.0.1)") + "\n\n")
+
 	b.WriteString(h("  HARDWARE MIGRATION") + "\n\n")
 	b.WriteString(w("  Moving to a new machine (new CPU, motherboard, or host)?") + "\n")
 	b.WriteString(w("  From Config → Export for Hardware Migration, the wrapper creates") + "\n")

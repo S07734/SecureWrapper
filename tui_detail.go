@@ -56,8 +56,9 @@ func (dv DetailView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if conn != nil {
 				dv.status = dimStyle.Render("Testing...")
 				c := *conn
+				vault := dv.vault
 				return dv, func() tea.Msg {
-					err := testConn(c)
+					err := testConn(vault, c)
 					return testResultMsg{name: c.Name, err: err}
 				}
 			}
@@ -133,6 +134,9 @@ func (dv DetailView) View() string {
 		if conn.SSLMode != "" {
 			b.WriteString(fmt.Sprintf("  %s  %s\n", headerStyle.Render("SSL:"), connTargetStyle.Render(conn.SSLMode)))
 		}
+		if conn.TunnelVia != "" {
+			b.WriteString(fmt.Sprintf("  %s  %s\n", headerStyle.Render("Tunnel:"), connTargetStyle.Render("via "+conn.TunnelVia)))
+		}
 
 	case ConnWinRM:
 		b.WriteString(fmt.Sprintf("  %s  %s\n", headerStyle.Render("Host:"), connTargetStyle.Render(conn.Host)))
@@ -149,6 +153,9 @@ func (dv DetailView) View() string {
 			insecureLabel = warnStyle.Render("Yes")
 		}
 		b.WriteString(fmt.Sprintf("  %s  %s\n", headerStyle.Render("Insecure:"), connTargetStyle.Render(insecureLabel)))
+		if conn.TunnelVia != "" {
+			b.WriteString(fmt.Sprintf("  %s  %s\n", headerStyle.Render("Tunnel:"), connTargetStyle.Render("via "+conn.TunnelVia)))
+		}
 	}
 
 	b.WriteString("\n")

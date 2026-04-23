@@ -82,8 +82,9 @@ func (cl ConnectionList) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if len(conns) > 0 {
 				conn := conns[cl.cursor]
 				cl.status = dimStyle.Render(fmt.Sprintf("Testing %s...", conn.Name))
+				vault := cl.vault
 				return cl, func() tea.Msg {
-					err := testConn(conn)
+					err := testConn(vault, conn)
 					return testResultMsg{name: conn.Name, err: err}
 				}
 			}
