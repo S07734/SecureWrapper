@@ -2,6 +2,25 @@
 
 A compiled credential vault and connection wrapper. Stores encrypted connection profiles bound to the local machine. Designed to let automation tools execute authenticated commands without ever seeing the credentials.
 
+## Why This Exists (LLM Agent Use Case)
+
+SecureWrapper is particularly useful when paired with an LLM agent (Claude, GPT, Gemini, Copilot, etc.). Instead of giving the model plaintext access to your SSH passwords, API keys, database credentials, and Windows administrator accounts, you generate a single **auth key** and let the wrapper authenticate on the AI's behalf.
+
+The AI sees only:
+- Connection **names** (`prod-db`, `jumpbox`, `billing-api`, …)
+- **Command output** from the remote system
+
+The AI never sees:
+- Passwords
+- API tokens
+- SSH private keys or passphrases
+- TOTP secrets
+- Database credentials
+
+**If a conversation transcript leaks, a context window is compromised, or a tool-use log ends up somewhere it shouldn't:** the leaked information is useless. An attacker with the full transcript cannot reconstruct your credentials from it — the AI never held them. To cut off access entirely, **revoke the auth key** (seconds, one TUI command) or **wipe the vault** (kill switch). Compromise becomes a revocation problem, not a credential-rotation problem.
+
+You can also scope each auth key to a specific subset of connections, so one compromised AI agent can't reach your whole infrastructure.
+
 ## Features
 
 - **Three-factor encryption** — vault passphrase + machine hardware fingerprint + binary self-hash
