@@ -160,6 +160,13 @@ func printHelp() {
 	fmt.Printf("  %s  %s\n", m("--key-file"), w("Read auth key from file (safer than --key)"))
 	fmt.Println()
 
-	fmt.Printf("  SecureWrapper v%s  •  Machine: %s\n", version, ShortFingerprint())
+	fmt.Println(h("  PROJECT"))
+	fmt.Println()
+	fmt.Printf("  %s  %s\n", m(padRight("Home:", 12)), c(repoURL))
+	fmt.Printf("  %s  %s\n", m(padRight("Releases:", 12)), c(releasesURL))
+	fmt.Printf("  %s  %s\n", m(padRight("Issues:", 12)), c(issuesURL))
+	fmt.Printf("  %s  %s\n", m(padRight("License:", 12)), c(licenseName))
+	fmt.Println()
+	fmt.Printf("  SecureWrapper v%s  •  Built: %s  •  Machine: %s\n", version, buildDate, ShortFingerprint())
 	fmt.Println()
 }

@@ -234,7 +234,14 @@ func buildHelpContent() string {
 	b.WriteString(fmt.Sprintf("  %s  %s\n", m("--key-file"), w("Read auth key from file (safer than --key)")))
 	b.WriteString("\n")
 
-	b.WriteString(fmt.Sprintf("  SecureWrapper v%s  •  Machine: %s  •  Binary: %s\n", version, ShortFingerprint(), BinaryKeyFingerprint()))
+	b.WriteString(h("  PROJECT") + "\n\n")
+	b.WriteString(fmt.Sprintf("  %s  %s\n", m(padRight("Home:", 12)), c(repoURL)))
+	b.WriteString(fmt.Sprintf("  %s  %s\n", m(padRight("Releases:", 12)), c(releasesURL)))
+	b.WriteString(fmt.Sprintf("  %s  %s\n", m(padRight("Issues:", 12)), c(issuesURL)))
+	b.WriteString(fmt.Sprintf("  %s  %s\n", m(padRight("License:", 12)), c(licenseName)))
+	b.WriteString("\n")
+	b.WriteString(fmt.Sprintf("  SecureWrapper v%s  •  Built: %s  •  Machine: %s  •  Binary: %s\n",
+		version, buildDate, ShortFingerprint(), BinaryKeyFingerprint()))
 	b.WriteString("\n")
 
 	return b.String()

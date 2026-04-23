@@ -32,6 +32,7 @@ func NewConfigMenu(vault *Vault) ConfigMenu {
 			{key: "restore", label: "Restore Vault"},
 			{key: "hwexport", label: "Export for Hardware Migration"},
 			{key: "updates", label: "Check for Updates"},
+			{key: "about", label: "About"},
 		},
 	}
 }
@@ -143,6 +144,14 @@ func (cm ConfigMenu) activate() (tea.Model, tea.Cmd) {
 	case "updates":
 		return cm, func() tea.Msg {
 			return upgradeRequestMsg{}
+		}
+
+	case "about":
+		return cm, func() tea.Msg {
+			return switchScreenMsg{
+				screen: ScreenAbout,
+				model:  NewAboutScreen(cm.vault),
+			}
 		}
 	}
 

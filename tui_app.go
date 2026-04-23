@@ -19,6 +19,7 @@ const (
 	ScreenHelp
 	ScreenConfig
 	ScreenHWExport
+	ScreenAbout
 )
 
 // Custom messages for screen transitions
