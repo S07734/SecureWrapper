@@ -451,7 +451,11 @@ func (ec EditConnection) View() string {
 	b.WriteString(fmt.Sprintf("  Type: %s\n\n", connTypeStyle.Render(connectionTypeLabel(ec.conn.Type))))
 
 	switch ec.mode {
-	case editModePicker:
+	case editModePicker, editModeInput:
+		// Single field list — in input mode, the cursor row renders the
+		// textinput in place of the value so editing happens inline without
+		// leaving the full-form view.
+		editing := ec.mode == editModeInput
 		for i, f := range ec.fields {
 			display := f.value
 			if f.masked && f.value != "" {
@@ -461,12 +465,23 @@ func (ec EditConnection) View() string {
 				display = dimStyle.Render("(empty)")
 			}
 			label := padRight(f.label+":", 18)
+
 			if i == ec.cursor {
-				row := fmt.Sprintf("  %s %s",
-					highlightStyle.Render(label),
-					connTargetStyle.Render(display),
-				)
-				b.WriteString(cursorStyle.Render(">") + row + "\n")
+				if editing {
+					// Cursor row becomes the active input field.
+					b.WriteString(cursorStyle.Render(">") + fmt.Sprintf("  %s %s\n",
+						highlightStyle.Render(label),
+						ec.input.View(),
+					))
+					if hint := editFieldHint(ec.conn.Type, f.key); hint != "" {
+						b.WriteString("   " + strings.Repeat(" ", 19) + dimStyle.Render("Options: "+hint) + "\n")
+					}
+				} else {
+					b.WriteString(cursorStyle.Render(">") + fmt.Sprintf("  %s %s\n",
+						highlightStyle.Render(label),
+						connTargetStyle.Render(display),
+					))
+				}
 			} else {
 				b.WriteString(fmt.Sprintf("   %s %s\n",
 					headerStyle.Render(label),
@@ -477,29 +492,23 @@ func (ec EditConnection) View() string {
 
 		b.WriteString("\n")
 		b.WriteString(separatorStyle.Render("  "+strings.Repeat("-", 50)) + "\n")
-		footer := fmt.Sprintf("  %s  %s  %s",
-			dimStyle.Render("Up/Down=navigate  Enter=edit field"),
-			menuKeyStyle.Render("[S]")+" "+menuDescStyle.Render("Save"),
-			menuKeyStyle.Render("[Esc]")+" "+menuDescStyle.Render("Back"),
-		)
+		var footer string
+		if editing {
+			footer = fmt.Sprintf("  %s",
+				dimStyle.Render("Enter=apply  Esc=cancel edit"),
+			)
+		} else {
+			footer = fmt.Sprintf("  %s  %s  %s",
+				dimStyle.Render("Up/Down=navigate  Enter=edit field"),
+				menuKeyStyle.Render("[S]")+" "+menuDescStyle.Render("Save"),
+				menuKeyStyle.Render("[Esc]")+" "+menuDescStyle.Render("Back"),
+			)
+		}
 		b.WriteString(footer + "\n")
 
 		if ec.dirty && ec.origName != "" {
 			b.WriteString("\n  " + warnStyle.Render("Unsaved changes") + "\n")
 		}
-
-	case editModeInput:
-		field := ec.fields[ec.cursor]
-		if field.masked {
-			b.WriteString(fmt.Sprintf("  %s (enter to keep current):\n", field.label))
-		} else {
-			b.WriteString(fmt.Sprintf("  %s [%s]:\n", field.label, field.value))
-		}
-		b.WriteString("  " + ec.input.View() + "\n")
-		if hint := editFieldHint(ec.conn.Type, field.key); hint != "" {
-			b.WriteString("  " + dimStyle.Render("Options: "+hint) + "\n")
-		}
-		b.WriteString("\n  " + dimStyle.Render("Enter=apply  Esc=cancel") + "\n")
 
 	case editModeTestPrompt:
 		b.WriteString("  Test connection? (y/n) [y]:\n")
