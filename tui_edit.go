@@ -9,20 +9,25 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// editField represents an editable field in the connection form.
+// editField represents an editable field in the connection form. Fields with
+// a non-empty Choices list are edited via an inline picker (arrow keys +
+// Enter) rather than a textinput — eliminates typos on known enumerations.
 type editField struct {
-	key    string
-	label  string
-	value  string
-	masked bool
+	key     string
+	label   string
+	value   string
+	masked  bool
+	choices []string // if non-empty, field is picker-style with these options
 }
 
-// editMode tracks whether we're picking a field or editing one.
+// editMode tracks whether we're navigating the field list, typing into a
+// text field, picking from a choice list, or handling save/test lifecycle.
 type editMode int
 
 const (
 	editModePicker editMode = iota
 	editModeInput
+	editModeChoice
 	editModeTestPrompt
 	editModeTesting
 	editModeDone
@@ -34,16 +39,17 @@ const (
 // working Connection is a copy of the existing vault entry; if Name changes,
 // Save handles the rename.
 type EditConnection struct {
-	vault    *Vault
-	origName string // "" = add mode; otherwise the name as loaded (used to detect rename)
-	conn     Connection
-	input    textinput.Model
-	cursor   int
-	mode     editMode
-	fields   []editField
-	err      string
-	status   string
-	dirty    bool
+	vault        *Vault
+	origName     string // "" = add mode; otherwise the name as loaded (used to detect rename)
+	conn         Connection
+	input        textinput.Model
+	cursor       int // which field is selected in the picker
+	choiceCursor int // which option is selected in the inline choice picker
+	mode         editMode
+	fields       []editField
+	err          string
+	status       string
+	dirty        bool
 }
 
 // NewEditConnection builds the form in edit mode.
@@ -91,6 +97,43 @@ func NewAddConnectionForm(vault *Vault, ct ConnectionType) EditConnection {
 	return ec
 }
 
+// yesNo is the canonical choice list for boolean-style fields.
+var yesNo = []string{"Yes", "No"}
+
+// sslModeChoicesFor returns the valid SSL/TLS mode strings for a DB driver.
+// Shared between buildFields (to mark fields as picker-style) and hint text.
+func sslModeChoicesFor(ct ConnectionType) []string {
+	switch ct {
+	case ConnDBPostgres:
+		return []string{"disable", "allow", "prefer", "require", "verify-ca", "verify-full"}
+	case ConnDBMySQL:
+		return []string{"true", "false", "skip-verify", "preferred"}
+	case ConnDBMSSQL:
+		return []string{"disable", "false", "true", "strict"}
+	}
+	return nil
+}
+
+// tunnelChoicesFor returns picker options for the TunnelVia field: a
+// sentinel "(none)" entry plus every SSH-type connection name in the vault.
+// Excludes the current connection's own name so it can't tunnel through
+// itself.
+func (ec EditConnection) tunnelChoicesFor() []string {
+	choices := []string{"(none)"}
+	if ec.vault == nil {
+		return choices
+	}
+	for _, c := range ec.vault.ListConnections() {
+		if c.Name == ec.conn.Name {
+			continue
+		}
+		if c.Type == ConnSSHPassword || c.Type == ConnSSHKey {
+			choices = append(choices, c.Name)
+		}
+	}
+	return choices
+}
+
 // buildFields derives the field list from the working Connection. Name is
 // always first. Type-specific fields follow. In add mode, Name starts empty
 // and all other defaults are those chosen by the constructor.
@@ -118,12 +161,12 @@ func (ec EditConnection) buildFields() []editField {
 	case ConnAPI:
 		fields = append(fields,
 			editField{key: "baseurl", label: "Base URL", value: ec.conn.BaseURL},
-			editField{key: "authtype", label: "Auth Type", value: ec.conn.AuthType},
+			editField{key: "authtype", label: "Auth Type", value: ec.conn.AuthType, choices: []string{"key", "bearer", "basic"}},
 			editField{key: "authheader", label: "Auth Header", value: ec.conn.AuthHeader},
 			editField{key: "authvalue", label: "Auth Value", value: ec.conn.AuthValue, masked: true},
 			editField{key: "totpsecret", label: "TOTP Secret", value: ec.conn.TOTPSecret, masked: true},
 			editField{key: "extrafield", label: "Extra Field", value: ec.conn.ExtraField},
-			editField{key: "insecure", label: "Skip TLS", value: boolToYN(ec.conn.Insecure)},
+			editField{key: "insecure", label: "Skip TLS", value: boolToYNLabel(ec.conn.Insecure), choices: yesNo},
 		)
 	case ConnFTP:
 		fields = append(fields,
@@ -133,24 +176,32 @@ func (ec EditConnection) buildFields() []editField {
 			editField{key: "password", label: "Password", value: ec.conn.Password, masked: true},
 		)
 	case ConnDBPostgres, ConnDBMySQL, ConnDBMSSQL:
+		tunnelDisplay := ec.conn.TunnelVia
+		if tunnelDisplay == "" {
+			tunnelDisplay = "(none)"
+		}
 		fields = append(fields,
 			editField{key: "host", label: "Host", value: ec.conn.Host},
 			editField{key: "port", label: "Port", value: fmt.Sprintf("%d", ec.conn.Port)},
 			editField{key: "username", label: "Username", value: ec.conn.Username},
 			editField{key: "password", label: "Password", value: ec.conn.Password, masked: true},
 			editField{key: "database", label: "Database", value: ec.conn.Database},
-			editField{key: "sslmode", label: "SSL Mode", value: ec.conn.SSLMode},
-			editField{key: "tunnelvia", label: "Tunnel via SSH", value: ec.conn.TunnelVia},
+			editField{key: "sslmode", label: "SSL Mode", value: ec.conn.SSLMode, choices: sslModeChoicesFor(ec.conn.Type)},
+			editField{key: "tunnelvia", label: "Tunnel via SSH", value: tunnelDisplay, choices: ec.tunnelChoicesFor()},
 		)
 	case ConnWinRM:
+		tunnelDisplay := ec.conn.TunnelVia
+		if tunnelDisplay == "" {
+			tunnelDisplay = "(none)"
+		}
 		fields = append(fields,
 			editField{key: "host", label: "Host", value: ec.conn.Host},
 			editField{key: "port", label: "Port", value: fmt.Sprintf("%d", ec.conn.Port)},
 			editField{key: "username", label: "Username", value: ec.conn.Username},
 			editField{key: "password", label: "Password", value: ec.conn.Password, masked: true},
-			editField{key: "usehttps", label: "Use HTTPS", value: boolToYN(ec.conn.UseHTTPS)},
-			editField{key: "insecure", label: "Skip TLS", value: boolToYN(ec.conn.Insecure)},
-			editField{key: "tunnelvia", label: "Tunnel via SSH", value: ec.conn.TunnelVia},
+			editField{key: "usehttps", label: "Use HTTPS", value: boolToYNLabel(ec.conn.UseHTTPS), choices: yesNo},
+			editField{key: "insecure", label: "Skip TLS", value: boolToYNLabel(ec.conn.Insecure), choices: yesNo},
+			editField{key: "tunnelvia", label: "Tunnel via SSH", value: tunnelDisplay, choices: ec.tunnelChoicesFor()},
 		)
 	}
 
@@ -186,6 +237,8 @@ func (ec EditConnection) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return ec.updatePicker(msg)
 		case editModeInput:
 			return ec.updateInput(msg)
+		case editModeChoice:
+			return ec.updateChoice(msg)
 		case editModeTestPrompt:
 			return ec.updateTestPrompt(msg)
 		case editModeDone:
@@ -208,6 +261,30 @@ func (ec EditConnection) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return ec, nil
 }
 
+// updateChoice handles the inline picker for enum fields (sslmode, tunnelvia,
+// authtype, usehttps, insecure). Up/down scrolls through choices without
+// wrapping; Enter commits the selection; Esc cancels back to the field list.
+func (ec EditConnection) updateChoice(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	field := ec.fields[ec.cursor]
+	switch msg.String() {
+	case "up":
+		if ec.choiceCursor > 0 {
+			ec.choiceCursor--
+		}
+	case "down":
+		if ec.choiceCursor < len(field.choices)-1 {
+			ec.choiceCursor++
+		}
+	case "enter":
+		ec.input.SetValue(field.choices[ec.choiceCursor])
+		// Reuse applyField to run the normal conversion path.
+		return ec.applyField()
+	case "esc":
+		ec.mode = editModePicker
+	}
+	return ec, nil
+}
+
 func (ec EditConnection) updatePicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "up":
@@ -220,6 +297,14 @@ func (ec EditConnection) updatePicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "enter":
 		field := ec.fields[ec.cursor]
+		if len(field.choices) > 0 {
+			// Enum field → enter inline choice picker, pre-selecting the
+			// current value so arrow keys land somewhere predictable.
+			ec.mode = editModeChoice
+			ec.choiceCursor = indexOfChoice(field.choices, field.value)
+			ec.err = ""
+			return ec, nil
+		}
 		ec.mode = editModeInput
 		ec.input.SetValue("")
 		ec.input.Focus()
@@ -365,22 +450,22 @@ func (ec EditConnection) applyField() (tea.Model, tea.Cmd) {
 	case "extrafield":
 		ec.conn.ExtraField = val
 	case "insecure":
-		ec.conn.Insecure = strings.ToLower(val) == "y"
+		ec.conn.Insecure = parseYNInput(val)
 	case "database":
 		ec.conn.Database = val
 	case "sslmode":
 		ec.conn.SSLMode = val
 	case "usehttps":
-		ec.conn.UseHTTPS = strings.ToLower(val) == "y"
+		ec.conn.UseHTTPS = parseYNInput(val)
 		// Port default depends on UseHTTPS for WinRM; only reset if user
 		// hasn't customized it to something unusual.
 		if ec.conn.Type == ConnWinRM && (ec.conn.Port == 5985 || ec.conn.Port == 5986) {
 			ec.conn.Port = defaultPortForType(ec.conn.Type, ec.conn.UseHTTPS)
 		}
 	case "tunnelvia":
-		// "none" / "off" / "-" / "." all mean "clear the tunnel".
+		// "(none)" / "none" / "off" / "-" / "." all mean "clear the tunnel".
 		low := strings.ToLower(val)
-		if low == "none" || low == "off" || val == "-" || val == "." {
+		if low == "(none)" || low == "none" || low == "off" || val == "-" || val == "." || val == "" {
 			ec.conn.TunnelVia = ""
 		} else {
 			ec.conn.TunnelVia = val
@@ -474,11 +559,11 @@ func (ec EditConnection) View() string {
 	b.WriteString(fmt.Sprintf("  Type: %s\n\n", connTypeStyle.Render(connectionTypeLabel(ec.conn.Type))))
 
 	switch ec.mode {
-	case editModePicker, editModeInput:
-		// Single field list — in input mode, the cursor row renders the
-		// textinput in place of the value so editing happens inline without
-		// leaving the full-form view.
-		editing := ec.mode == editModeInput
+	case editModePicker, editModeInput, editModeChoice:
+		// Single field list. On the cursor row, render text input, choice
+		// picker, or plain value depending on mode. Other rows render
+		// normally either way so the admin keeps full-form context while
+		// editing a single field.
 		for i, f := range ec.fields {
 			display := f.value
 			if f.masked && f.value != "" {
@@ -489,27 +574,50 @@ func (ec EditConnection) View() string {
 			}
 			label := padRight(f.label+":", 18)
 
-			if i == ec.cursor {
-				if editing {
-					// Cursor row becomes the active input field.
-					b.WriteString(cursorStyle.Render(">") + fmt.Sprintf("  %s %s\n",
-						highlightStyle.Render(label),
-						ec.input.View(),
-					))
-					hint := editFieldHint(ec.conn.Type, f.key)
-					if hint == "" {
-						hint = editFieldHintFromVault(ec.vault, f.key)
-					}
-					if hint != "" {
-						b.WriteString("   " + strings.Repeat(" ", 19) + dimStyle.Render("Options: "+hint) + "\n")
-					}
-				} else {
-					b.WriteString(cursorStyle.Render(">") + fmt.Sprintf("  %s %s\n",
-						highlightStyle.Render(label),
-						connTargetStyle.Render(display),
-					))
+			isCursor := i == ec.cursor
+			switch {
+			case isCursor && ec.mode == editModeInput:
+				// Cursor row becomes the active text input.
+				b.WriteString(cursorStyle.Render(">") + fmt.Sprintf("  %s %s\n",
+					highlightStyle.Render(label),
+					ec.input.View(),
+				))
+				hint := editFieldHint(ec.conn.Type, f.key)
+				if hint == "" {
+					hint = editFieldHintFromVault(ec.vault, f.key)
 				}
-			} else {
+				if hint != "" {
+					b.WriteString("   " + strings.Repeat(" ", 19) + dimStyle.Render("Options: "+hint) + "\n")
+				}
+
+			case isCursor && ec.mode == editModeChoice:
+				// Cursor row shows the label with the current highlighted
+				// choice inline; picker options render below, indented.
+				current := ""
+				if len(f.choices) > 0 {
+					current = f.choices[ec.choiceCursor]
+				}
+				b.WriteString(cursorStyle.Render(">") + fmt.Sprintf("  %s %s\n",
+					highlightStyle.Render(label),
+					highlightStyle.Render(current),
+				))
+				for ci, choice := range f.choices {
+					marker := "   "
+					style := connTargetStyle
+					if ci == ec.choiceCursor {
+						marker = " " + cursorStyle.Render(">") + " "
+						style = highlightStyle
+					}
+					b.WriteString("   " + strings.Repeat(" ", 19) + marker + style.Render(choice) + "\n")
+				}
+
+			case isCursor:
+				b.WriteString(cursorStyle.Render(">") + fmt.Sprintf("  %s %s\n",
+					highlightStyle.Render(label),
+					connTargetStyle.Render(display),
+				))
+
+			default:
 				b.WriteString(fmt.Sprintf("   %s %s\n",
 					headerStyle.Render(label),
 					connTargetStyle.Render(display),
@@ -520,11 +628,12 @@ func (ec EditConnection) View() string {
 		b.WriteString("\n")
 		b.WriteString(separatorStyle.Render("  "+strings.Repeat("-", 50)) + "\n")
 		var footer string
-		if editing {
-			footer = fmt.Sprintf("  %s",
-				dimStyle.Render("Enter=apply  Esc=cancel edit"),
-			)
-		} else {
+		switch ec.mode {
+		case editModeInput:
+			footer = "  " + dimStyle.Render("Enter=apply  Esc=cancel edit")
+		case editModeChoice:
+			footer = "  " + dimStyle.Render("Up/Down=pick  Enter=select  Esc=cancel")
+		default:
 			footer = fmt.Sprintf("  %s  %s  %s",
 				dimStyle.Render("Up/Down=navigate  Enter=edit field"),
 				menuKeyStyle.Render("[S]")+" "+menuDescStyle.Render("Save"),
@@ -564,6 +673,39 @@ func boolToYN(b bool) string {
 		return "y"
 	}
 	return "n"
+}
+
+// boolToYNLabel is the display-friendly "Yes"/"No" used in picker choices
+// and field values that render via the choice list.
+func boolToYNLabel(b bool) string {
+	if b {
+		return "Yes"
+	}
+	return "No"
+}
+
+// parseYNInput accepts both the picker-style "Yes"/"No" labels and the
+// legacy single-letter forms, so manual text entry of y / yes / Y all
+// still work for the boolean fields.
+func parseYNInput(s string) bool {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "y", "yes", "true", "1":
+		return true
+	}
+	return false
+}
+
+// indexOfChoice returns the position of val in the choices list, or 0 as a
+// safe default. Case-insensitive to handle label/value drift between
+// display forms (e.g. "Yes" vs stored "y").
+func indexOfChoice(choices []string, val string) int {
+	lv := strings.ToLower(val)
+	for i, c := range choices {
+		if strings.ToLower(c) == lv {
+			return i
+		}
+	}
+	return 0
 }
 
 // connectionTypeLabel returns the human-readable label for a connection type.
