@@ -49,7 +49,7 @@ type EditConnection struct {
 // NewEditConnection builds the form in edit mode.
 func NewEditConnection(vault *Vault, connName string) EditConnection {
 	ti := textinput.New()
-	ti.Prompt = promptStyle.Render("  ") + " "
+	ti.Prompt = ""
 	ti.CharLimit = 256
 
 	ec := EditConnection{
@@ -69,7 +69,7 @@ func NewEditConnection(vault *Vault, connName string) EditConnection {
 // has to enter required values.
 func NewAddConnectionForm(vault *Vault, ct ConnectionType) EditConnection {
 	ti := textinput.New()
-	ti.Prompt = promptStyle.Render("  ") + " "
+	ti.Prompt = ""
 	ti.CharLimit = 256
 
 	conn := Connection{Type: ct}
