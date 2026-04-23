@@ -7,29 +7,29 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// addTypeOption maps a numeric key choice to a connection type.
+// addTypeOption maps a menu entry to a connection type.
 type addTypeOption struct {
-	key   string
 	label string
 	ct    ConnectionType
 }
 
 var addTypeOptions = []addTypeOption{
-	{"1", "SSH (password)", ConnSSHPassword},
-	{"2", "SSH (key)", ConnSSHKey},
-	{"3", "API (REST)", ConnAPI},
-	{"4", "FTP / SFTP", ConnFTP},
-	{"5", "Database (PostgreSQL)", ConnDBPostgres},
-	{"6", "Database (MySQL / MariaDB)", ConnDBMySQL},
-	{"7", "Database (SQL Server)", ConnDBMSSQL},
-	{"8", "WinRM / PowerShell", ConnWinRM},
+	{"SSH (password)", ConnSSHPassword},
+	{"SSH (key)", ConnSSHKey},
+	{"API (REST)", ConnAPI},
+	{"FTP / SFTP", ConnFTP},
+	{"Database (PostgreSQL)", ConnDBPostgres},
+	{"Database (MySQL / MariaDB)", ConnDBMySQL},
+	{"Database (SQL Server)", ConnDBMSSQL},
+	{"WinRM / PowerShell", ConnWinRM},
 }
 
-// AddConnection is now a thin type-selector. Once a type is picked it hands
-// off to the unified field-picker form (see EditConnection) in add mode.
+// AddConnection is the type-selector that precedes the unified field-picker
+// form. Navigation matches the Config submenu (up/down + Enter) for
+// consistency across the TUI.
 type AddConnection struct {
-	vault *Vault
-	err   string
+	vault  *Vault
+	cursor int
 }
 
 func NewAddConnection(vault *Vault) AddConnection {
@@ -41,42 +41,56 @@ func (ac AddConnection) Init() tea.Cmd { return nil }
 func (ac AddConnection) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		if msg.String() == "esc" {
+		switch msg.String() {
+		case "up":
+			if ac.cursor > 0 {
+				ac.cursor--
+			}
+		case "down":
+			if ac.cursor < len(addTypeOptions)-1 {
+				ac.cursor++
+			}
+		case "enter":
+			chosen := addTypeOptions[ac.cursor].ct
+			vault := ac.vault
+			return ac, func() tea.Msg {
+				return switchScreenMsg{
+					screen: ScreenEditConnection,
+					model:  NewAddConnectionForm(vault, chosen),
+				}
+			}
+		case "esc", "b", "B":
 			return ac, func() tea.Msg {
 				return switchScreenMsg{screen: ScreenConnectionList, model: NewConnectionList(ac.vault)}
 			}
+		case "q", "Q":
+			return ac, tea.Quit
 		}
-		for _, opt := range addTypeOptions {
-			if msg.String() == opt.key {
-				chosen := opt.ct
-				vault := ac.vault
-				return ac, func() tea.Msg {
-					return switchScreenMsg{
-						screen: ScreenEditConnection,
-						model:  NewAddConnectionForm(vault, chosen),
-					}
-				}
-			}
-		}
-		ac.err = "Enter 1-8."
-		return ac, nil
 	}
 	return ac, nil
 }
 
 func (ac AddConnection) View() string {
 	var b strings.Builder
+
 	b.WriteString(titleStyle.Render("\n  -- Add Connection --\n"))
 	b.WriteString("\n")
-	b.WriteString(dimStyle.Render("  Choose a connection type to begin. The next screen lets you fill in fields in any order.") + "\n\n")
-	for _, opt := range addTypeOptions {
-		b.WriteString(fmt.Sprintf("  %s %s\n", menuKeyStyle.Render("["+opt.key+"]"), opt.label))
+	b.WriteString(dimStyle.Render("  Choose a connection type. The next screen lets you fill in fields in any order.") + "\n\n")
+
+	for i, opt := range addTypeOptions {
+		if i == ac.cursor {
+			row := fmt.Sprintf("  %s", highlightStyle.Render(padRight(opt.label, 30)))
+			b.WriteString(cursorStyle.Render(">") + row + "\n")
+		} else {
+			b.WriteString(fmt.Sprintf("   %s\n", connTargetStyle.Render(padRight(opt.label, 30))))
+		}
 	}
+
 	b.WriteString("\n")
 	b.WriteString(separatorStyle.Render("  "+strings.Repeat("-", 40)) + "\n")
-	b.WriteString("  " + dimStyle.Render("Press a number to select  •  Esc to cancel") + "\n")
-	if ac.err != "" {
-		b.WriteString("\n  " + errorStyle.Render(ac.err) + "\n")
-	}
+	b.WriteString(fmt.Sprintf("  %s  %s\n",
+		dimStyle.Render("Up/Down=navigate  Enter=select"),
+		menuKeyStyle.Render("[B]")+" "+menuDescStyle.Render("Back"),
+	))
 	return b.String()
 }
