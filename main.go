@@ -35,6 +35,17 @@ func main() {
 		return
 	}
 
+	// Handle --show-fingerprint — print full fingerprint and exit (no vault needed)
+	if hasFlag(args, "--show-fingerprint") {
+		fp, err := MachineFingerprint()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println(fp)
+		return
+	}
+
 	// Handle --list — works with auth key or passphrase
 	if hasFlag(args, "--list") {
 		if !VaultExists() {
