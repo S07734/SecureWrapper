@@ -340,8 +340,8 @@ The `--creds` flag outputs a JSON object with the stored credentials for a conne
 ### Security Notes
 
 - `WRAPPER_AUTH_KEY` is the actual secret — treat it like a password. Use Docker secrets or your platform's secret management rather than plain environment variables in production.
-- `WRAPPER_MACHINE_FP` is not a secret — it is stored unencrypted in the vault header and only acts as a second factor when combined with a valid auth key.
-- A warning is printed to stderr whenever `WRAPPER_MACHINE_FP` is active: `[wrapper] WARNING: WRAPPER_MACHINE_FP override active — hardware binding bypassed`
+- `WRAPPER_MACHINE_FP` only affects **auth-key access** (2-factor: key + fingerprint). Passphrase-based vault operations always use real hardware — the override cannot be used to open the vault interactively on a different machine.
+- A warning is printed to stderr whenever `WRAPPER_MACHINE_FP` is active: `[wrapper] WARNING: WRAPPER_MACHINE_FP override active — auth-key fingerprint bypassed`
 - Scope auth keys to the minimum set of connections the container needs.
 - The vault file itself can be shared across containers on the same host — each container uses its own scoped auth key.
 

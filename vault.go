@@ -170,6 +170,31 @@ func CheckVaultCompatibility() (bool, string) {
 	return true, ""
 }
 
+// CheckVaultCompatibilityAuthKey is like CheckVaultCompatibility but uses the
+// auth-key fingerprint path, which honours WRAPPER_MACHINE_FP. Call this in
+// connection mode (--sys) so Docker containers pass the machine check before
+// attempting OpenVaultWithAuthKey. Passphrase-path callers use the plain version.
+func CheckVaultCompatibilityAuthKey() (bool, string) {
+	header := ReadVaultHeader()
+	if header == nil {
+		return true, ""
+	}
+
+	currentBinaryFP := BinaryKeyFingerprint()
+	currentMachineFP := shortAuthKeyFingerprint()
+
+	if header.MachineFP != currentMachineFP {
+		return false, fmt.Sprintf("vault was created on a different machine (vault: %s, this: %s)", header.MachineFP, currentMachineFP)
+	}
+
+	if header.BinaryFP != currentBinaryFP {
+		return false, fmt.Sprintf("vault was created with a different binary (vault: %s v%s, this: %s v%s). Use the correct binary or upgrade from within the vault.",
+			header.BinaryFP, header.Version, currentBinaryFP, version)
+	}
+
+	return true, ""
+}
+
 // BackupVault creates two backups:
 // 1. Raw copy of vault.enc → vault.enc.backup (for same-binary restore)
 // 2. A 2-factor encrypted export → vault.backup (passphrase + machine only, no binary key)
@@ -484,7 +509,7 @@ func OpenVaultWithAuthKey(authKey string) (*Vault, error) {
 		return nil, err
 	}
 
-	fp, err := MachineFingerprint()
+	fp, err := authKeyMachineFingerprint()
 	if err != nil {
 		return nil, fmt.Errorf("cannot generate machine fingerprint: %w", err)
 	}

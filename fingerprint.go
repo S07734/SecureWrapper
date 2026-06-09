@@ -13,15 +13,10 @@ import (
 
 // MachineFingerprint generates a stable fingerprint from hardware/OS identifiers.
 // Uses platform-specific sources plus cross-platform network/hostname info.
-// If WRAPPER_MACHINE_FP is set, its value is returned directly — hardware
-// binding is bypassed. Intended for Docker containers that need to use the
-// host's fingerprint. A warning is printed to stderr when the override is active.
+// This always reflects real hardware — no env var overrides apply here.
+// For auth-key operations that support Docker fingerprint override, use
+// authKeyMachineFingerprint() instead.
 func MachineFingerprint() (string, error) {
-	if fp := os.Getenv("WRAPPER_MACHINE_FP"); fp != "" {
-		fmt.Fprintf(os.Stderr, "[wrapper] WARNING: WRAPPER_MACHINE_FP override active — hardware binding bypassed\n")
-		return fp, nil
-	}
-
 	var parts []string
 
 	// Platform-specific identifiers (machine-id, CPU, disk serial)
@@ -76,11 +71,40 @@ func MachineFingerprint() (string, error) {
 	return hex.EncodeToString(hash[:]), nil
 }
 
-// ShortFingerprint returns the first 16 chars of the fingerprint for display.
+// ShortFingerprint returns the first 16 chars of the real hardware fingerprint for display.
 func ShortFingerprint() string {
 	fp, err := MachineFingerprint()
 	if err != nil {
 		return "unknown"
+	}
+	return fp[:16]
+}
+
+// authKeyMachineFingerprint returns the fingerprint used for auth-key vault
+// operations. If WRAPPER_MACHINE_FP is set, that value is used instead of the
+// real hardware fingerprint — this allows Docker containers to authenticate
+// against a vault stored on the host machine.
+//
+// This override applies ONLY to auth-key access (2-factor: key + fingerprint).
+// Passphrase access always uses the real hardware fingerprint and is unaffected.
+func authKeyMachineFingerprint() (string, error) {
+	if fp := os.Getenv("WRAPPER_MACHINE_FP"); fp != "" {
+		fmt.Fprintf(os.Stderr, "[wrapper] WARNING: WRAPPER_MACHINE_FP override active — auth-key fingerprint bypassed\n")
+		return fp, nil
+	}
+	return MachineFingerprint()
+}
+
+// shortAuthKeyFingerprint returns the first 16 chars of the auth-key fingerprint
+// (includes WRAPPER_MACHINE_FP override if set). Used for compatibility checks
+// in connection mode where the override must be honoured.
+func shortAuthKeyFingerprint() string {
+	fp, err := authKeyMachineFingerprint()
+	if err != nil {
+		return "unknown"
+	}
+	if len(fp) < 16 {
+		return fp
 	}
 	return fp[:16]
 }

@@ -185,8 +185,10 @@ func runConnection(args []string) {
 		os.Exit(1)
 	}
 
-	// Check vault compatibility before attempting auth
-	if compatible, reason := CheckVaultCompatibility(); !compatible {
+	// Check vault compatibility before attempting auth.
+	// Uses the auth-key fingerprint path so WRAPPER_MACHINE_FP is honoured
+	// for Docker containers running against a host vault.
+	if compatible, reason := CheckVaultCompatibilityAuthKey(); !compatible {
 		fmt.Fprintf(os.Stderr, "Error: %s\n", reason)
 		os.Exit(1)
 	}
