@@ -52,3 +52,29 @@ func platformFingerprint() []string {
 
 	return parts
 }
+
+// platformExcludedInterfaces returns interface names that belong to removable
+// external devices (USB-C docks, USB Ethernet adapters) and should be excluded
+// from MAC fingerprinting. Uses networksetup to detect interfaces whose
+// Hardware Port description contains "USB" — built-in ports never report this.
+func platformExcludedInterfaces() []string {
+	out, err := exec.Command("networksetup", "-listallhardwareports").Output()
+	if err != nil {
+		return nil
+	}
+	var excluded []string
+	var portType string
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "Hardware Port:") {
+			portType = strings.ToLower(strings.TrimSpace(strings.TrimPrefix(line, "Hardware Port:")))
+		} else if strings.HasPrefix(line, "Device:") {
+			device := strings.TrimSpace(strings.TrimPrefix(line, "Device:"))
+			if strings.Contains(portType, "usb") && device != "" {
+				excluded = append(excluded, device)
+			}
+			portType = ""
+		}
+	}
+	return excluded
+}
