@@ -204,7 +204,8 @@ func buildHelpContent() string {
 	b.WriteString(w("  • Bound to this binary — won't decrypt with a different build") + "\n")
 	b.WriteString(w("  • Auth keys stored as hashes — plaintext never persisted") + "\n")
 	b.WriteString(w("  • Passphrase policy: 12+ chars, upper+lower+digit+special, not common") + "\n")
-	b.WriteString(w("  • 5 failed passphrase attempts wipes the vault (backup saved)") + "\n")
+	b.WriteString(w("  • Tiered lockout on failed attempts: 5 → 5 min, 10 → 1 hr,") + "\n")
+	b.WriteString(w("    15 → 8 hr, 20 → 48 hr, 25 → permanent lock (restore via backup)") + "\n")
 	b.WriteString(w("  • Local-only — remote calls are rejected") + "\n")
 	b.WriteString(w("  • Wrong binary detected before passphrase attempt") + "\n\n")
 
@@ -228,10 +229,11 @@ func buildHelpContent() string {
 	b.WriteString(d("  • Auth keys are NOT migrated — regenerate on the new machine.") + "\n\n")
 
 	b.WriteString(h("  OTHER FLAGS") + "\n\n")
-	b.WriteString(fmt.Sprintf("  %s  %s\n", m("--help    "), w("Show this help")))
-	b.WriteString(fmt.Sprintf("  %s  %s\n", m("--version "), w("Show version and machine fingerprint")))
-	b.WriteString(fmt.Sprintf("  %s  %s\n", m("--list    "), w("List connection names")))
-	b.WriteString(fmt.Sprintf("  %s  %s\n", m("--key-file"), w("Read auth key from file (safer than --key)")))
+	b.WriteString(fmt.Sprintf("  %s  %s\n", m("--help            "), w("Show this help")))
+	b.WriteString(fmt.Sprintf("  %s  %s\n", m("--version         "), w("Show version and machine fingerprint")))
+	b.WriteString(fmt.Sprintf("  %s  %s\n", m("--list            "), w("List connection names")))
+	b.WriteString(fmt.Sprintf("  %s  %s\n", m("--key-file        "), w("Read auth key from file (safer than --key)")))
+	b.WriteString(fmt.Sprintf("  %s  %s\n", m("--show-fingerprint"), w("Print full machine fingerprint and exit")))
 	b.WriteString("\n")
 
 	b.WriteString(h("  PROJECT") + "\n\n")

@@ -191,11 +191,20 @@ func runConnection(args []string) {
 		os.Exit(1)
 	}
 
-	// Rate limit auth key attempts (but never auto-wipe — that's only for interactive)
+	// Check lockout state before attempting vault access
 	ad := loadAttempts()
-	if ad.Count > 0 {
-		delay := backoffDelay(ad.Count)
-		time.Sleep(delay)
+	if ad.Permanent {
+		fmt.Fprintf(os.Stderr, "Error: vault permanently locked — too many failed attempts. Run wrapper interactively to restore from backup.\n")
+		os.Exit(1)
+	}
+	if !ad.LockedUntil.IsZero() && time.Now().Before(ad.LockedUntil) {
+		remaining := time.Until(ad.LockedUntil).Round(time.Second)
+		fmt.Fprintf(os.Stderr, "Error: too many failed attempts — locked for %s.\n", remaining)
+		os.Exit(1)
+	}
+	// Per-attempt backoff within the current block
+	if pos := ad.Count % 5; pos > 0 {
+		time.Sleep(backoffDelay(pos))
 	}
 
 	vault, err := OpenVaultWithAuthKey(authKey)
@@ -594,18 +603,52 @@ func runInteractive() {
 
 	// Check persistent attempt counter
 	ad := loadAttempts()
-	if ad.Count >= 5 {
-		// Too many failed attempts — backup then wipe
-		BackupVault()
-		WipeVault()
+
+	// Permanent lock — vault inaccessible until restored from backup
+	if ad.Permanent {
+		printError("Vault permanently locked — too many failed passphrase attempts.")
+		fmt.Println()
+		if PortableBackupExists() {
+			printWarn("A portable backup exists. Restoring it will reset the lock counter.")
+			choice := strings.ToUpper(printPrompt("(R)estore from backup, or (Q)uit?"))
+			if strings.HasPrefix(choice, "R") {
+				passphrase := printPasswordPrompt("Vault passphrase to decrypt backup:")
+				vault, err := RestoreVault(passphrase)
+				if err != nil {
+					printError(fmt.Sprintf("Restore failed: %v", err))
+					pause()
+				} else {
+					resetAttempts()
+					printSuccess("Vault restored. Lock counter cleared.")
+					pause()
+					runBubbletea(vault)
+					return
+				}
+			}
+		} else {
+			printWarn("No portable backup found.")
+			fmt.Println(dimStyle.Render("  To recover: place a portable backup next to the binary and restart."))
+			fmt.Println(dimStyle.Render("  Create backups in advance via Config → Backup."))
+		}
 		os.Exit(1)
 	}
 
-	maxAttempts := 5 - ad.Count
-	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		totalAttempts := ad.Count + attempt - 1
-		if totalAttempts > 0 {
-			delay := backoffDelay(totalAttempts)
+	// Temporary lockout — currently in a cooldown period
+	if !ad.LockedUntil.IsZero() && time.Now().Before(ad.LockedUntil) {
+		remaining := time.Until(ad.LockedUntil).Round(time.Second)
+		tier := ad.Count / 5
+		printError(fmt.Sprintf("Too many failed attempts — locked for %s.", remaining))
+		fmt.Println(dimStyle.Render(fmt.Sprintf("  Tier %d of %d. Further failures increase lockout duration.", tier, len(lockoutDurations))))
+		os.Exit(1)
+	}
+
+	// Allow up to 5 attempts per block; each exhausted block escalates the lockout tier.
+	// Per-attempt backoff is based on position within the current block, not cumulative count.
+	remainingInBlock := 5 - (ad.Count % 5)
+	for attempt := 1; attempt <= remainingInBlock; attempt++ {
+		pos := (ad.Count % 5) + attempt - 1
+		if pos > 0 {
+			delay := backoffDelay(pos)
 			time.Sleep(delay)
 		}
 
@@ -623,14 +666,31 @@ func runInteractive() {
 		}
 
 		newAd := incrementAttempts()
-		if newAd.Count >= 5 {
-			// Silent wipe — but backup first
-			BackupVault()
-			WipeVault()
+
+		if newAd.Permanent {
+			printError("Vault permanently locked after too many failed attempts.")
+			printWarn("Restart and restore from a portable backup to regain access.")
+			fmt.Println(dimStyle.Render("  Create backups in advance via Config → Backup."))
 			os.Exit(1)
 		}
 
+		if !newAd.LockedUntil.IsZero() {
+			lockDur := time.Until(newAd.LockedUntil).Round(time.Second)
+			tier := newAd.Count / 5
+			printError(fmt.Sprintf("Too many failed attempts — locked for %s.", lockDur))
+			fmt.Println(dimStyle.Render(fmt.Sprintf("  Tier %d of %d. Further failures will increase lockout duration.", tier, len(lockoutDurations))))
+			os.Exit(1)
+		}
+
+		left := remainingInBlock - attempt
 		printError("Incorrect passphrase.")
+		if left > 0 {
+			plural := "s"
+			if left == 1 {
+				plural = ""
+			}
+			fmt.Println(dimStyle.Render(fmt.Sprintf("  %d attempt%s remaining before lockout.", left, plural)))
+		}
 		fmt.Println()
 
 		choice := strings.ToUpper(printPrompt("(R)etry, (H)elp, or (W)ipe vault?"))
@@ -787,9 +847,23 @@ func attemptsFilePath() string {
 	return filepath.Join(home, ".secure-wrapper", "attempts")
 }
 
+// lockoutDurations defines the cooldown period applied after each exhausted
+// block of 5 failed attempts. Index 0 = after 5 failures, index 1 = after 10,
+// etc. After all tiers are exhausted (25 failures) the vault is permanently
+// locked and can only be recovered via portable backup restore.
+var lockoutDurations = []time.Duration{
+	5 * time.Minute, // tier 0: after  5 failures
+	1 * time.Hour,   // tier 1: after 10 failures
+	8 * time.Hour,   // tier 2: after 15 failures
+	48 * time.Hour,  // tier 3: after 20 failures
+	// tier 4: after 25 failures → permanent lock
+}
+
 type attemptData struct {
-	Count     int       `json:"count"`
-	LastFail  time.Time `json:"last_fail"`
+	Count       int       `json:"count"`
+	LastFail    time.Time `json:"last_fail"`
+	LockedUntil time.Time `json:"locked_until,omitempty"`
+	Permanent   bool      `json:"permanent,omitempty"`
 }
 
 func loadAttempts() attemptData {
@@ -819,6 +893,14 @@ func incrementAttempts() attemptData {
 	ad := loadAttempts()
 	ad.Count++
 	ad.LastFail = time.Now()
+	if ad.Count%5 == 0 {
+		tier := ad.Count/5 - 1
+		if tier >= len(lockoutDurations) {
+			ad.Permanent = true
+		} else {
+			ad.LockedUntil = time.Now().Add(lockoutDurations[tier])
+		}
+	}
 	saveAttempts(ad)
 	return ad
 }

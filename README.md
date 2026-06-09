@@ -41,8 +41,8 @@ Scope each auth key to a specific subset of connections, so one compromised agen
 - **SSH tunneling** — DB and WinRM connections can be routed through any stored SSH connection (bastion / jumphost pattern) with one config field
 - **Hardware migration** — passphrase + one-time code export with 24-hour network-time-verified fuse, carries connections to a new machine
 - **Passphrase policy** — minimum length, character-class diversity, and common-password blocklist enforced at creation and rotation, with a live strength meter
-- **Self-destructing** — 5 failed attempts (persistent across sessions) silently wipes the vault
-- **Brute-force protection** — persistent attempt counter with exponential backoff
+- **Tiered lockout** — failed passphrase attempts trigger escalating lockouts: 5 → 5 min, 10 → 1 hr, 15 → 8 hr, 20 → 48 hr, 25 → permanent lock (recover via portable backup restore). No auto-wipe.
+- **Brute-force protection** — persistent attempt counter with per-attempt exponential backoff within each block
 - **Local-only** — remote calls are rejected
 
 ## Quick Start
@@ -235,7 +235,7 @@ Enforced at vault creation and rotation (not at open, not at backup restore — 
 | Auth key visible in process list | Use env var or key file, not CLI arg |
 | Unauthorized caller | Auth key required |
 | Remote caller | Local-only enforcement |
-| Passphrase brute force | Argon2id + persistent counter + exponential backoff + silent wipe |
+| Passphrase brute force | Argon2id + tiered lockout (5 min → 1 hr → 8 hr → 48 hr → permanent) + per-attempt exponential backoff |
 | MITM on SSH connections | TOFU host key verification |
 | Compromised update download | SHA-256 checksum verification |
 | Shell injection via remote paths | All remote paths shell-escaped |

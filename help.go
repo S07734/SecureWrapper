@@ -122,7 +122,8 @@ func printHelp() {
 	fmt.Println(w("  • Bound to this binary — won't decrypt with a different build"))
 	fmt.Println(w("  • Auth keys stored as hashes — plaintext never persisted"))
 	fmt.Println(w("  • Passphrase policy: 12+ chars, upper+lower+digit+special, not common"))
-	fmt.Println(w("  • 5 failed passphrase attempts silently wipes the vault"))
+	fmt.Println(w("  • Tiered lockout on failed attempts: 5 → 5 min, 10 → 1 hr,"))
+	fmt.Println(w("    15 → 8 hr, 20 → 48 hr, 25 → permanent lock (restore via backup)"))
 	fmt.Println(w("  • Local-only — remote calls are rejected"))
 	fmt.Println()
 
@@ -154,10 +155,11 @@ func printHelp() {
 
 	fmt.Println(h("  OTHER FLAGS"))
 	fmt.Println()
-	fmt.Printf("  %s  %s\n", m("--help    "), w("Show this help"))
-	fmt.Printf("  %s  %s\n", m("--version "), w("Show version and machine fingerprint"))
-	fmt.Printf("  %s  %s\n", m("--list    "), w("List connection names"))
-	fmt.Printf("  %s  %s\n", m("--key-file"), w("Read auth key from file (safer than --key)"))
+	fmt.Printf("  %s  %s\n", m("--help            "), w("Show this help"))
+	fmt.Printf("  %s  %s\n", m("--version         "), w("Show version and machine fingerprint"))
+	fmt.Printf("  %s  %s\n", m("--list            "), w("List connection names"))
+	fmt.Printf("  %s  %s\n", m("--key-file        "), w("Read auth key from file (safer than --key)"))
+	fmt.Printf("  %s  %s\n", m("--show-fingerprint"), w("Print full machine fingerprint and exit"))
 	fmt.Println()
 
 	fmt.Println(h("  PROJECT"))
