@@ -1,25 +1,31 @@
 # SecureWrapper
 
-A compiled credential vault and connection wrapper. Stores encrypted connection profiles bound to the local machine. Designed to let automation tools execute authenticated commands without ever seeing the credentials.
+**A credential firewall for LLM agents and MCP servers.** Stores encrypted connection profiles bound to the local machine. Lets AI agents, MCP servers, and automation tools execute authenticated commands without ever seeing the underlying credentials — SSH passwords, API keys, database credentials, or Windows administrator accounts never leave the vault.
 
-## Why This Exists (LLM Agent Use Case)
+## Why This Exists
 
-SecureWrapper is particularly useful when paired with an LLM agent (Claude, GPT, Gemini, Copilot, etc.). Instead of giving the model plaintext access to your SSH passwords, API keys, database credentials, and Windows administrator accounts, you generate a single **auth key** and let the wrapper authenticate on the AI's behalf.
+### LLM Agents and MCP Servers
 
-The AI sees only:
+Modern AI workflows connect language models to real infrastructure through tool calls and MCP servers. Every tool that can run a command or call an API is a potential credential exposure point — tool-use logs, conversation transcripts, context windows, and MCP server processes all become attack surface the moment you put a real password in them.
+
+SecureWrapper removes credentials from that surface entirely. Instead of embedding passwords in your MCP server config or passing API tokens through an agent's context, you give the agent a single **auth key** and let the wrapper authenticate on its behalf.
+
+The agent (and every log it produces) sees only:
 - Connection **names** (`prod-db`, `jumpbox`, `billing-api`, …)
 - **Command output** from the remote system
 
-The AI never sees:
+The agent never sees:
 - Passwords
 - API tokens
 - SSH private keys or passphrases
 - TOTP secrets
 - Database credentials
 
-**If a conversation transcript leaks, a context window is compromised, or a tool-use log ends up somewhere it shouldn't:** the leaked information is useless. An attacker with the full transcript cannot reconstruct your credentials from it — the AI never held them. To cut off access entirely, **revoke the auth key** (seconds, one TUI command) or **wipe the vault** (kill switch). Compromise becomes a revocation problem, not a credential-rotation problem.
+**If a conversation transcript leaks, a context window is compromised, an MCP server process is dumped, or a tool-use log ends up somewhere it shouldn't:** the leaked information is useless. An attacker with the full transcript cannot reconstruct your credentials from it — the agent never held them.
 
-You can also scope each auth key to a specific subset of connections, so one compromised AI agent can't reach your whole infrastructure.
+To cut off access entirely, **revoke the auth key** (seconds, one TUI command) or **wipe the vault** (kill switch). Compromise becomes a revocation problem, not a credential-rotation problem.
+
+Scope each auth key to a specific subset of connections, so one compromised agent or MCP server can't reach your whole infrastructure.
 
 ## Features
 
@@ -144,6 +150,7 @@ For SCP and Rsync, prefix remote paths with `:` — the wrapper automatically pr
 | `--version` | Version, build date, machine and binary fingerprints |
 | `--list` | List connection names (works with auth key — shows only accessible connections) |
 | `--key-file` | Read auth key from file (safer than `--key`) |
+| `--show-fingerprint` | Print the full machine fingerprint string and exit (no vault needed) |
 
 ## Security Model
 
@@ -243,6 +250,100 @@ Enforced at vault creation and rotation (not at open, not at backup restore — 
 sudo chown root:root wrapper
 sudo chmod 711 wrapper
 ```
+
+## Docker Deployment
+
+SecureWrapper can run inside a Docker container and authenticate against a vault stored on the host. Because the vault is machine-bound, containers have a different hardware fingerprint than their host. The `WRAPPER_MACHINE_FP` environment variable lets the container present the host's fingerprint so auth key decryption succeeds.
+
+**The vault file is not a secret** — it is AES-256-GCM encrypted and useless without the auth key. It is safe to mount read-only into the container.
+
+### Setup
+
+**1. Get the host machine fingerprint**
+
+On the host where the vault lives:
+
+```bash
+wrapper --show-fingerprint
+# → 9c5e3e36300a9ea24d15c85face453c0d6390e73f36386cd1c0b90cd836c3492
+```
+
+**2. Create a scoped auth key**
+
+In the wrapper TUI → Config → Auth Keys, create a key scoped only to the connections the container needs. This limits blast radius if the container is compromised.
+
+**3. Copy the wrapper binary into your image**
+
+```dockerfile
+# In your Dockerfile — copy from build context or a prior build stage
+COPY wrapper-linux-amd64 /usr/local/bin/wrapper
+RUN chmod 755 /usr/local/bin/wrapper
+```
+
+**4. Mount the vault and pass credentials as environment variables**
+
+```yaml
+# docker-compose.yml
+services:
+  myapp:
+    image: myapp:latest
+    volumes:
+      - /home/user/.secure-wrapper/vault.enc:/root/.secure-wrapper/vault.enc:ro
+    environment:
+      WRAPPER_AUTH_KEY: swk_xxxxxxxxxxxxx
+      WRAPPER_MACHINE_FP: 9c5e3e36300a9ea24d15c85face453c0d6390e73f36386cd1c0b90cd836c3492
+```
+
+Or with `docker run`:
+
+```bash
+docker run \
+  -v /home/user/.secure-wrapper/vault.enc:/root/.secure-wrapper/vault.enc:ro \
+  -e WRAPPER_AUTH_KEY=swk_xxxxxxxxxxxxx \
+  -e WRAPPER_MACHINE_FP=9c5e3e36300a9ea24d15c85face453c0d6390e73f36386cd1c0b90cd836c3492 \
+  myapp:latest
+```
+
+**5. Fetch secrets at container startup**
+
+Use `--creds` mode in your entrypoint to pull credentials into the process environment without storing them in the image or config:
+
+```bash
+#!/bin/sh
+# docker-entrypoint.sh
+
+# Pull secrets from wrapper — credentials never written to disk or image
+JWT_SECRET=$(wrapper --sys myapp-jwt --api GET / | jq -r '.auth_value')
+DB_PASSWORD=$(wrapper --sys myapp-db --creds | jq -r '.password')
+API_TOKEN=$(wrapper --sys billing-api --creds | jq -r '.auth_value')
+
+export JWT_SECRET DB_PASSWORD API_TOKEN
+
+exec "$@"
+```
+
+The `--creds` flag outputs a JSON object with the stored credentials for a connection:
+
+```json
+{
+  "name": "myapp-db",
+  "type": "db-postgres",
+  "host": "db.internal",
+  "port": "5432",
+  "username": "app",
+  "password": "s3cr3t",
+  "database": "myapp",
+  "ssl_mode": "require"
+}
+```
+
+### Security Notes
+
+- `WRAPPER_AUTH_KEY` is the actual secret — treat it like a password. Use Docker secrets or your platform's secret management rather than plain environment variables in production.
+- `WRAPPER_MACHINE_FP` is not a secret — it is stored unencrypted in the vault header and only acts as a second factor when combined with a valid auth key.
+- A warning is printed to stderr whenever `WRAPPER_MACHINE_FP` is active: `[wrapper] WARNING: WRAPPER_MACHINE_FP override active — hardware binding bypassed`
+- Scope auth keys to the minimum set of connections the container needs.
+- The vault file itself can be shared across containers on the same host — each container uses its own scoped auth key.
 
 ## Architecture
 
