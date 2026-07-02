@@ -4,15 +4,16 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"net"
 	"os"
 	"runtime"
-	"sort"
 	"strings"
 )
 
 // MachineFingerprint generates a stable fingerprint from hardware/OS identifiers.
-// Uses platform-specific sources plus cross-platform network/hostname info.
+// Uses platform-specific stable sources only (machine-id, CPU, disk serial,
+// architecture). Network interfaces are intentionally excluded — they change
+// whenever a phone, dock, or USB dongle is connected and are not a reliable
+// hardware identity signal.
 // This always reflects real hardware — no env var overrides apply here.
 // For auth-key operations that support Docker fingerprint override, use
 // authKeyMachineFingerprint() instead.
@@ -24,43 +25,6 @@ func MachineFingerprint() (string, error) {
 
 	// Cross-platform: architecture
 	parts = append(parts, "arch:"+runtime.GOARCH)
-
-	// Cross-platform: MAC addresses (sorted, excluding loopback, virtual, and
-	// platform-detected external adapters such as USB-C dock Ethernet ports).
-	ifaces, err := net.Interfaces()
-	if err == nil {
-		excluded := make(map[string]bool)
-		for _, name := range platformExcludedInterfaces() {
-			excluded[name] = true
-		}
-		var macs []string
-		for _, iface := range ifaces {
-			if iface.Flags&net.FlagLoopback != 0 {
-				continue
-			}
-			if excluded[iface.Name] {
-				continue
-			}
-			mac := iface.HardwareAddr.String()
-			if mac != "" && !strings.HasPrefix(iface.Name, "veth") &&
-				!strings.HasPrefix(iface.Name, "docker") &&
-				!strings.HasPrefix(iface.Name, "br-") &&
-				!strings.HasPrefix(iface.Name, "virbr") &&
-				!strings.HasPrefix(iface.Name, "vmnet") &&
-				!strings.HasPrefix(iface.Name, "tap") &&
-				!strings.HasPrefix(iface.Name, "tun") &&
-				!strings.HasPrefix(iface.Name, "wg") &&
-				!strings.HasPrefix(iface.Name, "vnet") {
-				macs = append(macs, mac)
-			}
-		}
-		sort.Strings(macs)
-		for _, mac := range macs {
-			parts = append(parts, "mac:"+mac)
-		}
-	}
-
-	// Hostname intentionally excluded — changes too easily and destabilizes fingerprint
 
 	if len(parts) < 2 {
 		return "", fmt.Errorf("insufficient hardware identifiers for fingerprint (got %d, need at least 2)", len(parts))

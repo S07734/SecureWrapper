@@ -42,5 +42,3 @@ func platformFingerprint() []string {
 
 	return parts
 }
-
-func platformExcludedInterfaces() []string { return nil }

@@ -53,25 +53,13 @@ type hwMigrationPayload struct {
 }
 
 // hwMigrationDir is the overridable directory used to locate the migration
-// file. In production it resolves to the running binary's directory so the
-// file travels with the binary. Tests swap this for a temp directory.
-var hwMigrationDir = binaryDir
+// file. In production it resolves to the vault directory (~/.secure-wrapper/)
+// so it is always user-writable even when the binary lives in a system path
+// like /usr/local/bin. Tests swap this for a temp directory.
+var hwMigrationDir = vaultDirPath
 
-func binaryDir() string {
-	exe, err := os.Executable()
-	if err != nil {
-		return vaultDirPath()
-	}
-	resolved, err := filepath.EvalSymlinks(exe)
-	if err == nil {
-		exe = resolved
-	}
-	return filepath.Dir(exe)
-}
-
-// hwMigrationPath returns the path next to the running binary, not the user's
-// home dir. Rationale: hardware migration implies moving the binary between
-// machines — the file should travel with it.
+// hwMigrationPath returns the full path to the migration file in the vault
+// directory. The admin must copy this file to the target machine before import.
 func hwMigrationPath() string {
 	return filepath.Join(hwMigrationDir(), hwMigrationFileName)
 }
