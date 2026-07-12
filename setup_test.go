@@ -6,6 +6,25 @@ import (
 	"testing"
 )
 
+// TestMain sandboxes HOME for the ENTIRE test package so no test can ever
+// touch the real ~/.secure-wrapper/ vault. Discovered the hard way: this
+// package's tests once ran against the live vault directory and deleted a
+// production vault.enc. Do not remove this guard; any new test that needs
+// a different HOME should layer its own t.Setenv on top.
+func TestMain(m *testing.M) {
+	tmp, err := os.MkdirTemp("", "securewrapper-test-home-*")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "cannot create sandbox HOME: %v\n", err)
+		os.Exit(1)
+	}
+	os.Setenv("HOME", tmp)
+	// Windows CI: UserHomeDir reads USERPROFILE there.
+	os.Setenv("USERPROFILE", tmp)
+	code := m.Run()
+	os.RemoveAll(tmp)
+	os.Exit(code)
+}
+
 func TestVaultCreateAndOpen(t *testing.T) {
 	os.RemoveAll(vaultPath())
 
