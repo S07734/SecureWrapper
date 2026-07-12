@@ -4,6 +4,8 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+
+	"github.com/go-sql-driver/mysql"
 )
 
 func TestBuildDSN_Postgres(t *testing.T) {
@@ -149,5 +151,28 @@ func TestFormatValue(t *testing.T) {
 	}
 	if got := formatValue(42); got != "42" {
 		t.Errorf("int: got %q", got)
+	}
+}
+
+func TestBuildDSN_MySQLSpecialCharPassword(t *testing.T) {
+	dsn, err := BuildDSN(DBConfig{
+		Driver: "mysql", Host: "10.0.0.1", Port: 3306,
+		Username: "root", Password: "p@ss/wo:rd?x", Database: "logs",
+	})
+	if err != nil {
+		t.Fatalf("BuildDSN: %v", err)
+	}
+	cfg, err := mysql.ParseDSN(dsn)
+	if err != nil {
+		t.Fatalf("driver cannot re-parse its own DSN: %v", err)
+	}
+	if cfg.Passwd != "p@ss/wo:rd?x" {
+		t.Errorf("password mangled in DSN round-trip: %q", cfg.Passwd)
+	}
+	if cfg.DBName != "logs" {
+		t.Errorf("dbname: %q", cfg.DBName)
+	}
+	if !cfg.ParseTime {
+		t.Error("parseTime lost")
 	}
 }

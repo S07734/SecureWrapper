@@ -368,7 +368,7 @@ func scpDownload(client *ssh.Client, remotePath, localPath string, flags []strin
 		destPath = localPath + "/" + parts[len(parts)-1]
 	}
 
-	if err := os.WriteFile(destPath, stdout.Bytes(), 0644); err != nil {
+	if err := os.WriteFile(destPath, stdout.Bytes(), 0600); err != nil {
 		return Result{Error: fmt.Errorf("cannot write local file: %w", err)}
 	}
 

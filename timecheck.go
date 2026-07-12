@@ -10,8 +10,8 @@ import (
 )
 
 // Trusted time sources. HTTPS is primary — authenticated by TLS, works through
-// firewalls. NTP is a fallback for environments where TLS is intercepted or all
-// HTTPS sources are unreachable.
+// firewalls. NTP samples only ever corroborate HTTPS samples (see
+// secureConsensus); an NTP-only quorum is rejected as spoofable.
 var httpsTimeSources = []string{
 	"https://www.google.com",
 	"https://www.cloudflare.com",
@@ -38,9 +38,9 @@ const (
 var trustedTimeFn = trustedTimeNetwork
 
 // TrustedTime returns a network-verified current time. Queries HTTPS sources
-// first; if fewer than 2 respond, falls back to NTP. Returns an error if no
-// consensus can be reached — callers MUST NOT fall back to the local clock
-// for security-critical checks.
+// first; NTP responses can only corroborate an HTTPS sample, never form a
+// quorum on their own. Returns an error if no consensus can be reached —
+// callers MUST NOT fall back to the local clock for security-critical checks.
 func TrustedTime() (time.Time, error) {
 	return trustedTimeFn()
 }
@@ -52,16 +52,37 @@ func trustedTimeNetwork() (time.Time, error) {
 	}
 
 	ntpResults := fetchNTPTimes(ntpTimeSources)
-	if t, ok := consensus(ntpResults, trustedTimeWindow, minAgreeingSources); ok {
+	if t, ok := secureConsensus(httpsResults, ntpResults); ok {
 		return t, nil
 	}
 
-	combined := append(httpsResults, ntpResults...)
-	if t, ok := consensus(combined, trustedTimeWindow, minAgreeingSources); ok {
-		return t, nil
-	}
+	return time.Time{}, fmt.Errorf("could not verify current time — need at least %d agreeing sources including one HTTPS source (got %d HTTPS, %d NTP responses). Check network connectivity.", minAgreeingSources, len(httpsResults), len(ntpResults))
+}
 
-	return time.Time{}, fmt.Errorf("could not verify current time — need at least %d agreeing sources (got %d responses). Check network connectivity.", minAgreeingSources, len(combined))
+// secureConsensus combines HTTPS and NTP samples but requires the agreeing
+// window to contain at least one TLS-authenticated HTTPS sample. SNTP is
+// unauthenticated UDP — an attacker who can block outbound 443 and answer
+// UDP 123 could otherwise steer the consensus arbitrarily (e.g. to bypass
+// the hardware-migration expiry fuse).
+func secureConsensus(httpsTimes, ntpTimes []time.Time) (time.Time, bool) {
+	if len(httpsTimes) == 0 {
+		return time.Time{}, false
+	}
+	combined := append(append([]time.Time{}, httpsTimes...), ntpTimes...)
+	t, ok := consensus(combined, trustedTimeWindow, minAgreeingSources)
+	if !ok {
+		return time.Time{}, false
+	}
+	for _, h := range httpsTimes {
+		d := h.Sub(t)
+		if d < 0 {
+			d = -d
+		}
+		if d <= trustedTimeWindow {
+			return t, true
+		}
+	}
+	return time.Time{}, false
 }
 
 // fetchHTTPSTimes issues HEAD requests to each URL in parallel and collects

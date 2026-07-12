@@ -315,7 +315,7 @@ func (akl AuthKeyList) View() string {
 	// Key list
 	keys := akl.vault.ListAuthKeys()
 	if len(keys) == 0 {
-		b.WriteString(warnStyle.Render("  No auth keys configured -- all local callers allowed.\n"))
+		b.WriteString(warnStyle.Render("  No auth keys configured -- operator access denied; only the passphrase opens this vault.\n"))
 	} else {
 		b.WriteString(fmt.Sprintf("  %s  %s  %s  %s\n",
 			headerStyle.Render(padRight("NAME", 18)),

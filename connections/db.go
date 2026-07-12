@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	_ "github.com/go-sql-driver/mysql"
+	"github.com/go-sql-driver/mysql"
 	_ "github.com/lib/pq"
 	_ "github.com/microsoft/go-mssqldb"
 )
@@ -179,16 +179,20 @@ func BuildDSN(cfg DBConfig) (string, error) {
 		return u.String(), nil
 
 	case "mysql":
-		// mysql driver DSN: user:pass@tcp(host:port)/dbname?params
-		params := url.Values{}
-		params.Set("parseTime", "true")
-		params.Set("timeout", dbOpenTimeout.String())
+		// Use the driver's own Config/FormatDSN so credentials containing
+		// DSN metacharacters (@ / : ?) survive the round-trip intact.
+		mc := mysql.NewConfig()
+		mc.User = cfg.Username
+		mc.Passwd = cfg.Password
+		mc.Net = "tcp"
+		mc.Addr = fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
+		mc.DBName = cfg.Database
+		mc.ParseTime = true
+		mc.Timeout = dbOpenTimeout
 		if cfg.SSLMode != "" {
-			params.Set("tls", cfg.SSLMode)
+			mc.TLSConfig = cfg.SSLMode
 		}
-		return fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?%s",
-			cfg.Username, cfg.Password, cfg.Host, cfg.Port,
-			cfg.Database, params.Encode()), nil
+		return mc.FormatDSN(), nil
 
 	case "sqlserver":
 		u := url.URL{

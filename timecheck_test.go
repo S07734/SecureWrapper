@@ -145,3 +145,36 @@ func TestFetchHTTPSTimes_Consensus(t *testing.T) {
 		t.Fatal("expected consensus across 2 close sources")
 	}
 }
+
+func TestSecureConsensus_NTPOnlyRejected(t *testing.T) {
+	base := time.Date(2026, 4, 22, 12, 0, 0, 0, time.UTC)
+	ntp := []time.Time{base, base.Add(5 * time.Second), base.Add(10 * time.Second)}
+	if _, ok := secureConsensus(nil, ntp); ok {
+		t.Fatal("NTP-only quorum must be rejected — SNTP is unauthenticated")
+	}
+}
+
+func TestSecureConsensus_NTPCorroboratesHTTPS(t *testing.T) {
+	base := time.Date(2026, 4, 22, 12, 0, 0, 0, time.UTC)
+	https := []time.Time{base}
+	ntp := []time.Time{base.Add(5 * time.Second)}
+	got, ok := secureConsensus(https, ntp)
+	if !ok {
+		t.Fatal("one HTTPS + one agreeing NTP sample should reach consensus")
+	}
+	if got.Sub(base) > 60*time.Second {
+		t.Fatalf("consensus time drifted: %v", got)
+	}
+}
+
+func TestSecureConsensus_NTPQuorumFarFromHTTPSRejected(t *testing.T) {
+	base := time.Date(2026, 4, 22, 12, 0, 0, 0, time.UTC)
+	// HTTPS says noon; spoofed NTP cluster says 6 hours earlier (inside a
+	// migration window). The NTP cluster forms a majority window on its own
+	// but contains no HTTPS sample — must be rejected.
+	https := []time.Time{base}
+	ntp := []time.Time{base.Add(-6 * time.Hour), base.Add(-6*time.Hour + 5*time.Second), base.Add(-6*time.Hour + 10*time.Second)}
+	if _, ok := secureConsensus(https, ntp); ok {
+		t.Fatal("NTP majority window without an HTTPS sample must be rejected")
+	}
+}
