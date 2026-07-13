@@ -29,7 +29,7 @@ func NewConfigMenu(vault *Vault) ConfigMenu {
 			{key: "authkeys", label: "Auth Keys"},
 			{key: "passphrase", label: "Change Passphrase"},
 			{key: "backup", label: "Backup Vault"},
-			{key: "restore", label: "Restore Vault"},
+			{key: "restore", label: "Restore Vault (Portable Backup)"},
 			{key: "fidobackup", label: "FIDO2 Backup (Security Key)"},
 			{key: "fidorestore", label: "Restore from FIDO2 Backup"},
 			{key: "hwexport", label: "Export for Hardware Migration"},
