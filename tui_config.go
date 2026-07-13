@@ -30,6 +30,8 @@ func NewConfigMenu(vault *Vault) ConfigMenu {
 			{key: "passphrase", label: "Change Passphrase"},
 			{key: "backup", label: "Backup Vault"},
 			{key: "restore", label: "Restore Vault"},
+			{key: "fidobackup", label: "FIDO2 Backup (Security Key)"},
+			{key: "fidorestore", label: "Restore from FIDO2 Backup"},
 			{key: "hwexport", label: "Export for Hardware Migration"},
 			{key: "updates", label: "Check for Updates"},
 			{key: "about", label: "About"},
@@ -122,6 +124,37 @@ func (cm ConfigMenu) activate() (tea.Model, tea.Cmd) {
 					fmt.Sprintf("Restore vault from backup%s? This will overwrite the current vault.", info),
 					func() tea.Msg {
 						return restoreCompleteMsg{}
+					},
+					func() tea.Msg {
+						return switchScreenMsg{
+							screen: ScreenConfig,
+							model:  NewConfigMenu(cm.vault),
+						}
+					},
+				),
+			}
+		}
+
+	case "fidobackup":
+		return cm, func() tea.Msg {
+			return switchScreenMsg{
+				screen: ScreenFIDOExport,
+				model:  NewFIDOExport(cm.vault),
+			}
+		}
+
+	case "fidorestore":
+		if !FIDOBackupExists() {
+			cm.status = warnStyle.Render("No FIDO2 backup found. Create one first via FIDO2 Backup.")
+			return cm, nil
+		}
+		return cm, func() tea.Msg {
+			return switchScreenMsg{
+				screen: ScreenConfirm,
+				model: NewConfirm(
+					fmt.Sprintf("Restore vault from FIDO2 backup%s? This will overwrite the current vault.", fidoRestoreInfo()),
+					func() tea.Msg {
+						return fidoRestoreRequestMsg{}
 					},
 					func() tea.Msg {
 						return switchScreenMsg{

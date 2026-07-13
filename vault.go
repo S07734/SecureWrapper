@@ -56,8 +56,8 @@ type Connection struct {
 	ExtraField string            `json:"extra_field,omitempty"` // generic extra data (e.g., diagnostic extension ID)
 
 	// Database-specific (postgres/mysql/mssql)
-	Database string `json:"database,omitempty"`  // default DB name
-	SSLMode  string `json:"ssl_mode,omitempty"`  // postgres: disable/require/verify-ca/verify-full; mysql: skip-verify/preferred/true/false; mssql: disable/false/true/strict
+	Database string `json:"database,omitempty"` // default DB name
+	SSLMode  string `json:"ssl_mode,omitempty"` // postgres: disable/require/verify-ca/verify-full; mysql: skip-verify/preferred/true/false; mssql: disable/false/true/strict
 
 	// WinRM-specific
 	UseHTTPS bool `json:"use_https,omitempty"` // WinRM over 5986 vs plain 5985
@@ -105,21 +105,21 @@ type VaultFile struct {
 
 // VaultHeader is stored unencrypted — allows detecting wrong binary without attempting decryption.
 type VaultHeader struct {
-	Version          string `json:"version"`           // SecureWrapper version that created/last saved this vault
-	BinaryFP         string `json:"binary_fp"`         // Binary fingerprint at save time
-	MachineFP        string `json:"machine_fp"`        // Machine fingerprint at save time
-	CreatedAt        string `json:"created_at"`        // When vault was first created
-	LastSaved        string `json:"last_saved"`        // When vault was last saved
-	ConnectionCount  int    `json:"connection_count"`  // Number of connections stored
-	AuthKeyCount     int    `json:"auth_key_count"`    // Number of auth keys stored
+	Version         string `json:"version"`          // SecureWrapper version that created/last saved this vault
+	BinaryFP        string `json:"binary_fp"`        // Binary fingerprint at save time
+	MachineFP       string `json:"machine_fp"`       // Machine fingerprint at save time
+	CreatedAt       string `json:"created_at"`       // When vault was first created
+	LastSaved       string `json:"last_saved"`       // When vault was last saved
+	ConnectionCount int    `json:"connection_count"` // Number of connections stored
+	AuthKeyCount    int    `json:"auth_key_count"`   // Number of auth keys stored
 }
 
 type Vault struct {
-	path                 string
-	passphrase           string
-	data                 VaultData
-	pendingAuthKeyVault  []AuthKeyVaultEntry
-	createdAt            string
+	path                string
+	passphrase          string
+	data                VaultData
+	pendingAuthKeyVault []AuthKeyVaultEntry
+	createdAt           string
 }
 
 func vaultPath() string {
@@ -196,9 +196,9 @@ func CheckVaultCompatibilityAuthKey() (bool, string) {
 }
 
 // BackupVault creates two backups:
-// 1. Raw copy of vault.enc → vault.enc.backup (for same-binary restore)
-// 2. A 2-factor encrypted export → vault.backup (passphrase + machine only, no binary key)
-//    This can be restored by ANY binary on the same machine.
+//  1. Raw copy of vault.enc → vault.enc.backup (for same-binary restore)
+//  2. A 2-factor encrypted export → vault.backup (passphrase + machine only, no binary key)
+//     This can be restored by ANY binary on the same machine.
 func BackupVault() error {
 	if !VaultExists() {
 		return nil
@@ -266,10 +266,10 @@ func (v *Vault) BackupVaultWithPassphrase() error {
 
 // WipeVault removes the vault and attempts file but preserves backups and known_hosts.
 func WipeVault() {
-	os.Remove(vaultPath())                                                     // vault.enc
-	os.Remove(attemptsFilePath())                                              // attempts
-	os.Remove(filepath.Join(filepath.Dir(vaultPath()), "vault.migration"))     // migration file
-	os.Remove(filepath.Join(filepath.Dir(vaultPath()), "key_usage.json"))      // key usage
+	os.Remove(vaultPath())                                                 // vault.enc
+	os.Remove(attemptsFilePath())                                          // attempts
+	os.Remove(filepath.Join(filepath.Dir(vaultPath()), "vault.migration")) // migration file
+	os.Remove(filepath.Join(filepath.Dir(vaultPath()), "key_usage.json"))  // key usage
 	// Preserve: vault.enc.backup, known_hosts
 }
 
@@ -322,6 +322,13 @@ func RestoreVault(passphrase string) (*Vault, error) {
 	}
 
 	data.Fingerprint = fp
+
+	// Safety net: keep a raw copy of any live vault before overwriting it.
+	if VaultExists() {
+		if err := BackupVault(); err != nil {
+			return nil, fmt.Errorf("cannot back up existing vault before restore: %w", err)
+		}
+	}
 
 	vault := &Vault{
 		path:       vaultPath(),

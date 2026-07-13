@@ -20,6 +20,7 @@ const (
 	ScreenConfig
 	ScreenHWExport
 	ScreenAbout
+	ScreenFIDOExport
 )
 
 // Custom messages for screen transitions
@@ -37,6 +38,7 @@ type testResultMsg struct {
 
 type upgradeRequestMsg struct{}
 type restoreCompleteMsg struct{}
+type fidoRestoreRequestMsg struct{}
 
 // App is the root Bubbletea model.
 type App struct {
@@ -46,6 +48,7 @@ type App struct {
 	height           int
 	upgradeRequested bool
 	restoreCompleted bool
+	fidoRestore      bool
 }
 
 func NewApp(vault *Vault) App {
@@ -99,6 +102,10 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case restoreCompleteMsg:
 		a.restoreCompleted = true
+		return a, tea.Quit
+
+	case fidoRestoreRequestMsg:
+		a.fidoRestore = true
 		return a, tea.Quit
 
 	case upgradeRequestMsg:

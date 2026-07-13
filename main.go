@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -121,9 +122,48 @@ func runBubbletea(vault *Vault) {
 				vault = restoredVault
 				continue // restart TUI with restored vault
 			}
+			if app.fidoRestore {
+				fmt.Println()
+				if restoredVault := cliFIDORestore(); restoredVault != nil {
+					vault = restoredVault
+				}
+				continue // restart TUI (restored vault or unchanged on failure)
+			}
 		}
 		break // normal quit
 	}
+}
+
+// cliFIDORestore prompts for the FIDO2 backup password and optional security
+// key PIN, then runs the two-factor restore (password + hmac-secret from the
+// enrolled key). Returns the restored vault, or nil on failure/decline.
+func cliFIDORestore() *Vault {
+	printWarn(fmt.Sprintf("Restoring from FIDO2 security-key backup%s.", fidoRestoreInfo()))
+	fmt.Println(dimStyle.Render("  Plug in the ENROLLED security key before continuing."))
+	fmt.Println()
+
+	password := printPasswordPrompt("Backup password:")
+	if password == "" {
+		return nil
+	}
+	pin := printPasswordPrompt("Security key PIN (Enter if none):")
+
+	printWarn("Touch your security key when it blinks...")
+	vault, err := RestoreFIDOBackup(password, pin, newFIDO2Provider())
+	if err != nil && errors.Is(err, errFIDO2PINRequired) {
+		pin = printPasswordPrompt("This key requires its PIN. Security key PIN:")
+		printWarn("Touch your security key when it blinks...")
+		vault, err = RestoreFIDOBackup(password, pin, newFIDO2Provider())
+	}
+	if err != nil {
+		printError(fmt.Sprintf("FIDO2 restore failed: %v", err))
+		pause()
+		return nil
+	}
+	printSuccess("Vault restored from FIDO2 backup! (Backup password is now the vault passphrase.)")
+	fmt.Println(dimStyle.Render("  If this is a different machine, regenerate auth keys — they are machine-bound."))
+	pause()
+	return vault
 }
 
 // Mode flags — the third wrapper flag that determines transport
@@ -487,18 +527,31 @@ func runInteractive() {
 		// fall through — admin declined or import failed
 	}
 
-	if !VaultExists() && PortableBackupExists() {
-		header := ReadPortableBackupHeader()
-		info := ""
-		if header != nil {
-			info = fmt.Sprintf(" (%d connections, %d keys, saved %s)",
-				header.ConnectionCount, header.AuthKeyCount, header.LastSaved)
+	if !VaultExists() && (PortableBackupExists() || FIDOBackupExists()) {
+		var opts []string
+		if PortableBackupExists() {
+			header := ReadPortableBackupHeader()
+			info := ""
+			if header != nil {
+				info = fmt.Sprintf(" (%d connections, %d keys, saved %s)",
+					header.ConnectionCount, header.AuthKeyCount, header.LastSaved)
+			}
+			printWarn(fmt.Sprintf("No vault found, but a portable backup exists%s.", info))
+			opts = append(opts, "(R)estore portable backup")
 		}
-		printWarn(fmt.Sprintf("No vault found, but a portable backup exists%s.", info))
+		if FIDOBackupExists() {
+			printWarn(fmt.Sprintf("A FIDO2 security-key backup exists%s.", fidoRestoreInfo()))
+			opts = append(opts, "(F)IDO2 restore")
+		}
 		fmt.Println()
-		choice := strings.ToUpper(printPrompt("(R)estore from backup, (C)reate new vault, or (Q)uit?"))
+		opts = append(opts, "(C)reate new vault", "(Q)uit")
+		choice := strings.ToUpper(printPrompt(strings.Join(opts, ", ") + "?"))
 		switch choice {
 		case "R":
+			if !PortableBackupExists() {
+				printError("No portable backup found.")
+				os.Exit(1)
+			}
 			passphrase := printPasswordPrompt("Vault passphrase to decrypt backup:")
 			vault, err := RestoreVault(passphrase)
 			if err != nil {
@@ -510,6 +563,16 @@ func runInteractive() {
 			pause()
 			runBubbletea(vault)
 			return
+		case "F":
+			if !FIDOBackupExists() {
+				printError("No FIDO2 backup found.")
+				os.Exit(1)
+			}
+			if vault := cliFIDORestore(); vault != nil {
+				runBubbletea(vault)
+				return
+			}
+			os.Exit(1)
 		case "Q", "":
 			os.Exit(0)
 		case "C":
@@ -561,7 +624,12 @@ func runInteractive() {
 				info = fmt.Sprintf(" (%d connections, %d keys, saved %s)", header.ConnectionCount, header.AuthKeyCount, header.LastSaved)
 			}
 			printWarn(fmt.Sprintf("A portable vault backup exists%s.", info))
-			choice := strings.ToUpper(printPrompt("(R)estore from backup, (W)ipe and start fresh, or (Q)uit?"))
+			prompt := "(R)estore from backup, (W)ipe and start fresh, or (Q)uit?"
+			if FIDOBackupExists() {
+				printWarn(fmt.Sprintf("A FIDO2 security-key backup also exists%s.", fidoRestoreInfo()))
+				prompt = "(R)estore portable, (F)IDO2 restore, (W)ipe, or (Q)uit?"
+			}
+			choice := strings.ToUpper(printPrompt(prompt))
 			switch choice {
 			case "R":
 				passphrase := printPasswordPrompt("Vault passphrase to decrypt backup:")
@@ -575,6 +643,32 @@ func runInteractive() {
 				pause()
 				runBubbletea(vault)
 				return
+			case "F":
+				if FIDOBackupExists() {
+					if vault := cliFIDORestore(); vault != nil {
+						runBubbletea(vault)
+						return
+					}
+				}
+				os.Exit(1)
+			case "W":
+				confirm := printPrompt("Type WIPE to confirm:")
+				if confirm == "WIPE" {
+					WipeVault()
+					printSuccess("Vault wiped. Restart to create a new vault.")
+					os.Exit(0)
+				}
+			}
+		} else if FIDOBackupExists() {
+			printWarn(fmt.Sprintf("A FIDO2 security-key backup exists%s.", fidoRestoreInfo()))
+			choice := strings.ToUpper(printPrompt("(F)IDO2 restore, (W)ipe and start fresh, or (Q)uit?"))
+			switch choice {
+			case "F":
+				if vault := cliFIDORestore(); vault != nil {
+					runBubbletea(vault)
+					return
+				}
+				os.Exit(1)
 			case "W":
 				confirm := printPrompt("Type WIPE to confirm:")
 				if confirm == "WIPE" {
@@ -610,27 +704,50 @@ func runInteractive() {
 	if ad.Permanent {
 		printError("Vault permanently locked — too many failed passphrase attempts.")
 		fmt.Println()
-		if PortableBackupExists() {
-			printWarn("A portable backup exists. Restoring it will reset the lock counter.")
-			choice := strings.ToUpper(printPrompt("(R)estore from backup, or (Q)uit?"))
-			if strings.HasPrefix(choice, "R") {
-				passphrase := printPasswordPrompt("Vault passphrase to decrypt backup:")
-				vault, err := RestoreVault(passphrase)
-				if err != nil {
-					printError(fmt.Sprintf("Restore failed: %v", err))
-					pause()
-				} else {
-					resetAttempts()
-					printSuccess("Vault restored. Lock counter cleared.")
-					pause()
-					runBubbletea(vault)
-					return
+		hasPortable := PortableBackupExists()
+		hasFIDO := FIDOBackupExists()
+		if hasPortable || hasFIDO {
+			var opts []string
+			if hasPortable {
+				printWarn("A portable backup exists. Restoring it will reset the lock counter.")
+				opts = append(opts, "(R)estore portable backup")
+			}
+			if hasFIDO {
+				printWarn(fmt.Sprintf("A FIDO2 security-key backup exists%s. Restoring resets the lock counter.", fidoRestoreInfo()))
+				opts = append(opts, "(F)IDO2 restore")
+			}
+			opts = append(opts, "(Q)uit")
+			choice := strings.ToUpper(printPrompt(strings.Join(opts, ", ") + "?"))
+			switch choice {
+			case "R":
+				if hasPortable {
+					passphrase := printPasswordPrompt("Vault passphrase to decrypt backup:")
+					vault, err := RestoreVault(passphrase)
+					if err != nil {
+						printError(fmt.Sprintf("Restore failed: %v", err))
+						pause()
+					} else {
+						resetAttempts()
+						printSuccess("Vault restored. Lock counter cleared.")
+						pause()
+						runBubbletea(vault)
+						return
+					}
+				}
+			case "F":
+				if hasFIDO {
+					if vault := cliFIDORestore(); vault != nil {
+						resetAttempts()
+						printSuccess("Lock counter cleared.")
+						runBubbletea(vault)
+						return
+					}
 				}
 			}
 		} else {
-			printWarn("No portable backup found.")
-			fmt.Println(dimStyle.Render("  To recover: place a portable backup next to the binary and restart."))
-			fmt.Println(dimStyle.Render("  Create backups in advance via Config → Backup."))
+			printWarn("No backups found.")
+			fmt.Println(dimStyle.Render("  To recover: place a portable or FIDO2 backup in ~/.secure-wrapper/ and restart."))
+			fmt.Println(dimStyle.Render("  Create backups in advance via Config → Backup / FIDO2 Backup."))
 		}
 		os.Exit(1)
 	}

@@ -9,9 +9,9 @@ import (
 
 // HelpScreen is a scrollable help view.
 type HelpScreen struct {
-	lines    []string
-	offset   int
-	height   int
+	lines  []string
+	offset int
+	height int
 }
 
 func NewHelpScreen() HelpScreen {
@@ -216,6 +216,16 @@ func buildHelpContent() string {
 	b.WriteString(d("  • The TUI shows a picker of available SSH connections while editing") + "\n")
 	b.WriteString(d("  • Leave blank / type \"none\" to disable tunneling") + "\n")
 	b.WriteString(d("  • Inner TLS may need adjusting (traffic appears to come from 127.0.0.1)") + "\n\n")
+
+	b.WriteString(h("  FIDO2 SECURITY-KEY BACKUP") + "\n\n")
+	b.WriteString(w("  Config → FIDO2 Backup enrolls a YubiKey (or any CTAP2 key with") + "\n")
+	b.WriteString(w("  hmac-secret) and writes vault.fido2.backup. Decrypting needs the") + "\n")
+	b.WriteString(w("  file + the backup password + a touch of that physical key.") + "\n\n")
+	b.WriteString(d("  • Survives machine death — no machine fingerprint, no binary hash") + "\n")
+	b.WriteString(d("  • Restore: Config → Restore from FIDO2 Backup, or automatically") + "\n")
+	b.WriteString(d("    offered at launch when no vault exists") + "\n")
+	b.WriteString(d("  • Losing the key OR the password makes the backup undecryptable") + "\n")
+	b.WriteString(d("  • Windows needs Win11 22H2+ (webauthn.dll v4)") + "\n\n")
 
 	b.WriteString(h("  HARDWARE MIGRATION") + "\n\n")
 	b.WriteString(w("  Moving to a new machine (new CPU, motherboard, or host)?") + "\n")

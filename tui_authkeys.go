@@ -21,15 +21,15 @@ const (
 
 // AuthKeyList is the auth key management screen.
 type AuthKeyList struct {
-	vault       *Vault
-	cursor      int
-	mode        authKeyMode
-	input       textinput.Model
-	newKeyName  string
+	vault        *Vault
+	cursor       int
+	mode         authKeyMode
+	input        textinput.Model
+	newKeyName   string
 	generatedKey string
-	status      string
-	err         string
-	checklist   *Checklist
+	status       string
+	err          string
+	checklist    *Checklist
 }
 
 func NewAuthKeyList(vault *Vault) AuthKeyList {

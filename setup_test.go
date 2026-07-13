@@ -47,13 +47,13 @@ func TestVaultCreateAndOpen(t *testing.T) {
 	})
 
 	vault.AddConnection(Connection{
-		Name:     "test-api",
-		Type:     ConnAPI,
-		BaseURL:  "https://api.example.com",
-		AuthType: "key",
+		Name:       "test-api",
+		Type:       ConnAPI,
+		BaseURL:    "https://api.example.com",
+		AuthType:   "key",
 		AuthHeader: "X-API-KEY",
-		AuthValue: "secret-key-123",
-		Insecure: true,
+		AuthValue:  "secret-key-123",
+		Insecure:   true,
 	})
 
 	// Save before adding auth key (connections must be in vault)
