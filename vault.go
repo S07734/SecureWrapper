@@ -67,6 +67,13 @@ type Connection struct {
 	// local port-forward to this connection's Host:Port, and talk to
 	// 127.0.0.1:<ephemeral> instead. Empty = direct connection.
 	TunnelVia string `json:"tunnel_via,omitempty"`
+
+	// AllowCreds gates the --creds JSON dump for this connection. Default
+	// false (omitempty → absent in existing vaults → denied): an auth key
+	// can execute connections but CANNOT export plaintext credentials unless
+	// the admin explicitly opts this entry in. Prevents a leaked auth key
+	// from turning --creds into a plaintext credential oracle.
+	AllowCreds bool `json:"allow_creds,omitempty"`
 }
 
 type AuthKey struct {

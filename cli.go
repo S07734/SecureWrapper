@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"net"
 	"os"
@@ -14,6 +15,79 @@ import (
 
 	"golang.org/x/term"
 )
+
+// buildCredsJSON renders a connection's credentials as indented JSON for
+// consumption by other tools (MCP servers, scripts) via `--creds`. Gated
+// per-connection: unless AllowCreds is explicitly enabled in the vault, the
+// dump is refused so a leaked auth key cannot turn --creds into a plaintext
+// credential oracle. The error names only the connection, never a secret.
+func buildCredsJSON(conn Connection) (string, error) {
+	if !conn.AllowCreds {
+		return "", fmt.Errorf("connection %q does not permit --creds access. Enable it in the vault: Edit connection -> \"Allow --creds\" -> Yes", conn.Name)
+	}
+
+	credOutput := map[string]string{
+		"name": conn.Name,
+		"type": string(conn.Type),
+	}
+	switch conn.Type {
+	case ConnSSHPassword:
+		credOutput["host"] = conn.Host
+		credOutput["port"] = fmt.Sprintf("%d", conn.Port)
+		credOutput["username"] = conn.Username
+		credOutput["password"] = conn.Password
+	case ConnSSHKey:
+		credOutput["host"] = conn.Host
+		credOutput["port"] = fmt.Sprintf("%d", conn.Port)
+		credOutput["username"] = conn.Username
+		credOutput["key_path"] = conn.KeyPath
+		credOutput["key_passphrase"] = conn.KeyPass
+	case ConnAPI:
+		credOutput["base_url"] = conn.BaseURL
+		credOutput["auth_type"] = conn.AuthType
+		credOutput["auth_header"] = conn.AuthHeader
+		credOutput["auth_value"] = conn.AuthValue
+		if conn.TOTPSecret != "" {
+			credOutput["totp_secret"] = conn.TOTPSecret
+		}
+		if conn.ExtraField != "" {
+			credOutput["extra_field"] = conn.ExtraField
+		}
+		credOutput["insecure"] = fmt.Sprintf("%v", conn.Insecure)
+	case ConnFTP:
+		credOutput["host"] = conn.Host
+		credOutput["port"] = fmt.Sprintf("%d", conn.Port)
+		credOutput["username"] = conn.Username
+		credOutput["password"] = conn.Password
+	case ConnDBPostgres, ConnDBMySQL, ConnDBMSSQL:
+		credOutput["driver"] = dbDriverForType(conn.Type)
+		credOutput["host"] = conn.Host
+		credOutput["port"] = fmt.Sprintf("%d", conn.Port)
+		credOutput["username"] = conn.Username
+		credOutput["password"] = conn.Password
+		credOutput["database"] = conn.Database
+		credOutput["ssl_mode"] = conn.SSLMode
+		if conn.TunnelVia != "" {
+			credOutput["tunnel_via"] = conn.TunnelVia
+		}
+	case ConnWinRM:
+		credOutput["host"] = conn.Host
+		credOutput["port"] = fmt.Sprintf("%d", conn.Port)
+		credOutput["username"] = conn.Username
+		credOutput["password"] = conn.Password
+		credOutput["use_https"] = fmt.Sprintf("%v", conn.UseHTTPS)
+		credOutput["insecure"] = fmt.Sprintf("%v", conn.Insecure)
+		if conn.TunnelVia != "" {
+			credOutput["tunnel_via"] = conn.TunnelVia
+		}
+	}
+
+	jsonBytes, err := json.MarshalIndent(credOutput, "", "  ")
+	if err != nil {
+		return "", err
+	}
+	return string(jsonBytes), nil
+}
 
 func readLine(prompt string) string {
 	fmt.Print(prompt)

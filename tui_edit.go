@@ -205,6 +205,13 @@ func (ec EditConnection) buildFields() []editField {
 		)
 	}
 
+	// Cross-cutting to every type: whether --creds may dump this connection's
+	// plaintext credentials. Default No (secure) — an auth key can execute the
+	// connection but not export its secrets unless the admin opts in here.
+	fields = append(fields,
+		editField{key: "allowcreds", label: "Allow --creds", value: boolToYNLabel(ec.conn.AllowCreds), choices: yesNo},
+	)
+
 	return fields
 }
 
@@ -455,6 +462,8 @@ func (ec EditConnection) applyField() (tea.Model, tea.Cmd) {
 		ec.conn.Database = val
 	case "sslmode":
 		ec.conn.SSLMode = val
+	case "allowcreds":
+		ec.conn.AllowCreds = parseYNInput(val)
 	case "usehttps":
 		ec.conn.UseHTTPS = parseYNInput(val)
 		// Port default depends on UseHTTPS for WinRM; only reset if user
@@ -793,6 +802,8 @@ func editFieldHint(ct ConnectionType, fieldKey string) string {
 		return sslModeOptionsForType(ct)
 	case "usehttps", "insecure":
 		return "y / n"
+	case "allowcreds":
+		return "y / n  — Yes lets --creds export plaintext secrets for this entry"
 	case "authtype":
 		if ct == ConnAPI {
 			return "key / bearer / basic"

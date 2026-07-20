@@ -158,6 +158,13 @@ func (dv DetailView) View() string {
 		}
 	}
 
+	// Cross-cutting: --creds export permission for this connection.
+	credsLabel := "No (denied)"
+	if conn.AllowCreds {
+		credsLabel = warnStyle.Render("Yes (exports plaintext)")
+	}
+	b.WriteString(fmt.Sprintf("  %s  %s\n", headerStyle.Render("--creds:"), connTargetStyle.Render(credsLabel)))
+
 	b.WriteString("\n")
 	b.WriteString(separatorStyle.Render("  "+strings.Repeat("-", 50)) + "\n")
 	b.WriteString(fmt.Sprintf("  %s %s  %s %s  %s %s\n",

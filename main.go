@@ -308,64 +308,14 @@ func runConnection(args []string) {
 
 	case "creds":
 		// Output connection credentials as JSON — for other tools (MCP servers) to consume
-		// Only outputs non-sensitive metadata + credentials needed by the calling tool
-		credOutput := map[string]string{
-			"name": conn.Name,
-			"type": string(conn.Type),
+		// Gated per-connection via AllowCreds; denied by default so a leaked
+		// auth key can't dump plaintext credentials. See buildCredsJSON.
+		out, err := buildCredsJSON(*conn)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
 		}
-		switch conn.Type {
-		case ConnSSHPassword:
-			credOutput["host"] = conn.Host
-			credOutput["port"] = fmt.Sprintf("%d", conn.Port)
-			credOutput["username"] = conn.Username
-			credOutput["password"] = conn.Password
-		case ConnSSHKey:
-			credOutput["host"] = conn.Host
-			credOutput["port"] = fmt.Sprintf("%d", conn.Port)
-			credOutput["username"] = conn.Username
-			credOutput["key_path"] = conn.KeyPath
-			credOutput["key_passphrase"] = conn.KeyPass
-		case ConnAPI:
-			credOutput["base_url"] = conn.BaseURL
-			credOutput["auth_type"] = conn.AuthType
-			credOutput["auth_header"] = conn.AuthHeader
-			credOutput["auth_value"] = conn.AuthValue
-			if conn.TOTPSecret != "" {
-				credOutput["totp_secret"] = conn.TOTPSecret
-			}
-			if conn.ExtraField != "" {
-				credOutput["extra_field"] = conn.ExtraField
-			}
-			credOutput["insecure"] = fmt.Sprintf("%v", conn.Insecure)
-		case ConnFTP:
-			credOutput["host"] = conn.Host
-			credOutput["port"] = fmt.Sprintf("%d", conn.Port)
-			credOutput["username"] = conn.Username
-			credOutput["password"] = conn.Password
-		case ConnDBPostgres, ConnDBMySQL, ConnDBMSSQL:
-			credOutput["driver"] = dbDriverForType(conn.Type)
-			credOutput["host"] = conn.Host
-			credOutput["port"] = fmt.Sprintf("%d", conn.Port)
-			credOutput["username"] = conn.Username
-			credOutput["password"] = conn.Password
-			credOutput["database"] = conn.Database
-			credOutput["ssl_mode"] = conn.SSLMode
-			if conn.TunnelVia != "" {
-				credOutput["tunnel_via"] = conn.TunnelVia
-			}
-		case ConnWinRM:
-			credOutput["host"] = conn.Host
-			credOutput["port"] = fmt.Sprintf("%d", conn.Port)
-			credOutput["username"] = conn.Username
-			credOutput["password"] = conn.Password
-			credOutput["use_https"] = fmt.Sprintf("%v", conn.UseHTTPS)
-			credOutput["insecure"] = fmt.Sprintf("%v", conn.Insecure)
-			if conn.TunnelVia != "" {
-				credOutput["tunnel_via"] = conn.TunnelVia
-			}
-		}
-		jsonBytes, _ := json.MarshalIndent(credOutput, "", "  ")
-		fmt.Println(string(jsonBytes))
+		fmt.Println(out)
 		return
 
 	case "ssh-proxy":

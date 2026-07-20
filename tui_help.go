@@ -162,7 +162,7 @@ func buildHelpContent() string {
 	b.WriteString(fmt.Sprintf("  %s  %s\n", m("--db   "), w("Run a SQL query (Postgres / MySQL / SQL Server)")))
 	b.WriteString(fmt.Sprintf("  %s  %s\n", m("--winrm"), w("Run PowerShell via WinRM")))
 	b.WriteString(fmt.Sprintf("  %s  %s\n", m("--test "), w("Test connectivity (no command)")))
-	b.WriteString(fmt.Sprintf("  %s  %s\n", m("--creds"), w("Output credentials as JSON (for MCP integration)")))
+	b.WriteString(fmt.Sprintf("  %s  %s\n", m("--creds"), w("Output credentials as JSON (opt-in per connection; default off)")))
 	b.WriteString("\n")
 
 	b.WriteString(h("  EXAMPLES") + "\n\n")
