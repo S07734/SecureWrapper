@@ -31,17 +31,10 @@ func platformFingerprint() []string {
 		parts = append(parts, "cpu:"+cpu)
 	}
 
-	// Disk serial via wmic
-	if out, err := exec.Command("wmic", "diskdrive", "get", "SerialNumber").Output(); err == nil {
-		lines := strings.Split(strings.TrimSpace(string(out)), "\n")
-		for _, line := range lines {
-			line = strings.TrimSpace(line)
-			if line != "" && !strings.Contains(strings.ToLower(line), "serialnumber") {
-				parts = append(parts, "disk:"+line)
-				break
-			}
-		}
-	}
+	// NOTE: disk serial was intentionally removed (v0.1.45) — it broke the
+	// fingerprint on disk replacement/rebuild, and `wmic` is deprecated on
+	// newer Windows 11 builds (returned empty there anyway). MachineGuid +
+	// CPU + computer name remain.
 
 	// Computer name
 	if name := os.Getenv("COMPUTERNAME"); name != "" {
@@ -50,4 +43,3 @@ func platformFingerprint() []string {
 
 	return parts
 }
-

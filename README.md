@@ -162,7 +162,7 @@ For SCP and Rsync, prefix remote paths with `:` — the wrapper automatically pr
 
 ### Three-Factor Vault Encryption
 1. **Passphrase** — something you provide (admin access)
-2. **Machine fingerprint** — CPU, MAC addresses, disk serial, machine-id
+2. **Machine fingerprint** — CPU, machine-id / platform UUID, architecture (MAC addresses, disk serial, and hostname are deliberately excluded — they change too easily and would lock a vault on a NIC/disk swap or rebuild)
 3. **Binary self-hash** — SHA-256 of the compiled binary itself
 
 All three must match to decrypt the main vault. Auth key access uses 2-factor (auth key + machine fingerprint) so keys survive binary upgrades.

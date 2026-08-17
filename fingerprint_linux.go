@@ -3,7 +3,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"strings"
 )
@@ -26,19 +25,12 @@ func platformFingerprint() []string {
 		}
 	}
 
-	// Disk serial from /sys/block
-	if entries, err := os.ReadDir("/sys/block"); err == nil {
-		for _, entry := range entries {
-			serialPath := fmt.Sprintf("/sys/block/%s/device/serial", entry.Name())
-			if data, err := os.ReadFile(serialPath); err == nil {
-				serial := strings.TrimSpace(string(data))
-				if serial != "" {
-					parts = append(parts, "disk:"+serial)
-					break
-				}
-			}
-		}
-	}
+	// NOTE: disk serial was intentionally removed (v0.1.45). It broke the
+	// fingerprint whenever a disk was added/swapped/rebuilt (the selector
+	// picked the first /sys/block device with a serial, so even adding an
+	// NVMe to an sda-keyed box changed it) — the same class of instability
+	// that got MAC addresses removed. machine-id + CPU + arch are stable
+	// across a disk replacement.
 
 	return parts
 }

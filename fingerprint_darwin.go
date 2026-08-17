@@ -37,19 +37,10 @@ func platformFingerprint() []string {
 		parts = append(parts, "hw:"+strings.TrimSpace(string(out)))
 	}
 
-	// Boot disk serial
-	if out, err := exec.Command("system_profiler", "SPNVMeDataType").Output(); err == nil {
-		for _, line := range strings.Split(string(out), "\n") {
-			if strings.Contains(line, "Serial Number") {
-				serial := strings.TrimSpace(strings.SplitN(line, ":", 2)[1])
-				if serial != "" {
-					parts = append(parts, "disk:"+serial)
-					break
-				}
-			}
-		}
-	}
+	// NOTE: disk serial was intentionally removed (v0.1.45) — it broke the
+	// fingerprint on disk replacement/rebuild. IOPlatformUUID is hardware-
+	// derived and stable across a disk swap or OS reinstall, so the macOS
+	// fingerprint survives a rebuild with the same hardware.
 
 	return parts
 }
-
