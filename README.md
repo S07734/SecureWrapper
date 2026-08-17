@@ -27,6 +27,12 @@ To cut off access entirely, **revoke the auth key** (seconds, one TUI command) o
 
 Scope each auth key to a specific subset of connections, so one compromised agent or MCP server can't reach your whole infrastructure.
 
+### Local by Design — No Cloud, No Trust Transfer
+
+Cloud secrets managers like **Keeper Secrets Manager** address part of this: they mask secrets by default and require confirmation before a value is revealed, so an agent can use a credential without leaving it exposed. But the secrets still live in — and sync through — a third-party cloud service you have to trust, depend on, and pay for. You've moved your credentials off your own machine and onto someone else's infrastructure: another account, another subscription, another external dependency that can be breached, locked out, billed, or taken offline.
+
+SecureWrapper takes the opposite approach. **The vault never leaves your machine.** There is no cloud account, no subscription, no third party in the trust path, and nothing that reaches out over the network. It is **fully local, 100% under your control, and free and open source (MIT)** — the credentials stay on hardware you own, encrypted to that specific machine and binary.
+
 ## Features
 
 - **Three-factor encryption** — vault passphrase + machine hardware fingerprint + binary self-hash
