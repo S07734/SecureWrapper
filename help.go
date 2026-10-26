@@ -60,6 +60,7 @@ func printHelp() {
 	fmt.Printf("  %s  %s\n", m("--db   "), w("Run a SQL query (Postgres / MySQL / SQL Server)"))
 	fmt.Printf("  %s  %s\n", m("--winrm"), w("Run a PowerShell command via WinRM"))
 	fmt.Printf("  %s  %s\n", m("--test "), w("Test connectivity (no command)"))
+	fmt.Printf("  %s  %s\n", m("--creds"), w("Print stored credentials as JSON (off unless the connection allows it)"))
 	fmt.Printf("  %s  %s\n", m("--mux-status"), w("Is a shared SSH master running for this connection?"))
 	fmt.Printf("  %s  %s\n", m("--mux-stop  "), w("Retire the master (running calls finish first)"))
 	fmt.Println()
@@ -127,6 +128,8 @@ func printHelp() {
 	fmt.Println(w("  • Tiered lockout on failed attempts: 5 → 5 min, 10 → 1 hr,"))
 	fmt.Println(w("    15 → 8 hr, 20 → 48 hr, 25 → permanent lock (restore via backup)"))
 	fmt.Println(w("  • Local-only — remote calls are rejected"))
+	fmt.Println(w("  • Don't run under sudo — the vault is in your home, not root's;"))
+	fmt.Println(w("    install the binary in a folder you own so updates need no sudo"))
 	fmt.Println()
 
 	fmt.Println(h("  SSH TUNNELING"))

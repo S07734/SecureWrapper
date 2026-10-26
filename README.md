@@ -46,6 +46,7 @@ SecureWrapper takes the opposite approach. **The vault never leaves your machine
 - **In-app upgrades** — check for updates, download, verify checksum, migrate vault automatically
 - **Connection sharing** — SSH-based calls reuse one authenticated connection per profile (the native-client equivalent of OpenSSH ControlMaster), so bursts of calls don't trip fail2ban / rate limits on the server
 - **SSH tunneling** — DB and WinRM connections can be routed through any stored SSH connection (bastion / jumphost pattern) with one config field
+- **Security-key backup** — disaster-recovery backup that needs a password plus a FIDO2 hardware key, and restores on any machine
 - **Hardware migration** — passphrase + one-time code export with 24-hour network-time-verified fuse, carries connections to a new machine
 - **Passphrase policy** — minimum length, character-class diversity, and common-password blocklist enforced at creation and rotation, with a live strength meter
 - **Tiered lockout** — failed passphrase attempts trigger escalating lockouts: 5 → 5 min, 10 → 1 hr, 15 → 8 hr, 20 → 48 hr, 25 → permanent lock (recover via portable backup restore). No auto-wipe.
@@ -55,7 +56,11 @@ SecureWrapper takes the opposite approach. **The vault never leaves your machine
 ## Quick Start
 
 ```bash
-# Build (requires Go 1.24+)
+# Install a release binary in a folder you own, so in-app updates can replace it
+install -m 700 wrapper-linux-amd64 ~/.local/bin/wrapper
+
+# Or build from source
+# Build (requires Go 1.26+)
 ./build.sh
 
 # First run — create vault, add connections, generate auth keys
@@ -185,11 +190,12 @@ All three must match to decrypt the main vault. Auth key access uses 2-factor (a
 ### Brute-Force Protection
 - Persistent attempt counter across sessions (survives process restarts)
 - Exponential backoff between attempts (2^n seconds, capped at 30s)
-- 5 cumulative failures wipes the vault (backup preserved)
+- Tiered lockout: 5 failures → 5 min, 10 → 1 hr, 15 → 8 hr, 20 → 48 hr, 25 → permanent lock (recover from a backup). The vault is never wiped automatically
 
 ### Backup & Restore
 - **Portable backup** — 2-factor encrypted (passphrase + machine fingerprint, no binary hash). Survives binary upgrades.
 - **Restore** — decrypts portable backup with passphrase, re-encrypts for current binary
+- **FIDO2 security-key backup** — encrypted with a password *and* a hardware security key (CTAP2 `hmac-secret`, e.g. YubiKey 5). No machine fingerprint or binary hash, so it survives losing the machine: the key is the hardware factor. Export from Config → FIDO2 Backup (two key touches); restore from the Config menu or the launch prompt. Windows needs Windows 11 22H2 or later
 - **Raw backup + saved binary** — before an upgrade, restore, migration import or wipe, `vault.enc` is copied to `vault.enc.backup` and the binary that opens it is saved beside it as `wrapper-v<version>-<binary fingerprint>.backup`. A raw backup only decrypts with its exact binary. Every vault file records that fingerprint in plain text (`binary_fp` in its header), so any vault copy can be matched to its binary by name. Saved binaries are never deleted automatically, since copies kept elsewhere may still need them. The portable and FIDO2 backups also save the binary for the live `vault.enc`, so a copy of the whole vault folder always carries what it needs
 - Also offered at login when vault is incompatible with current binary
 - Vault wipe preserves backup files and known_hosts
@@ -361,7 +367,7 @@ export JWT_SECRET DB_PASSWORD API_TOKEN
 exec "$@"
 ```
 
-The `--creds` flag outputs a JSON object with the stored credentials for a connection:
+The `--creds` flag outputs a JSON object with the stored credentials for a connection. It is **off by default for every connection**: enable it per connection in the TUI (Edit → "Allow --creds" → Yes). Otherwise `--creds` exits non-zero, so a leaked auth key can run a connection but not read its secrets.
 
 ```json
 {
@@ -400,6 +406,9 @@ wrapper (Go, single static binary)
   ├── tui*.go            — BBS-style terminal UI (Bubbletea + Lipgloss)
   ├── help.go            — Built-in user guide
   ├── upgrade.go         — GitHub release checking, vault migration, checksum verification
+  ├── guards.go          — sudo detection, updater write-access check
+  ├── fido2*.go, fidobackup.go — FIDO2 security-key backup (CTAP2 / Windows webauthn)
+  ├── mux_*.go           — Connection sharing: master spawn, --mux-status / --mux-stop
   ├── tls_*.go           — Platform-specific TLS certificate handling
   └── connections/
       ├── ssh.go         — SSH, SCP, Rsync (Go native x/crypto/ssh)
@@ -407,6 +416,8 @@ wrapper (Go, single static binary)
       ├── ftp.go         — SFTP (Go native SSH)
       ├── db.go          — PostgreSQL / MySQL / SQL Server via database/sql
       ├── winrm.go       — WinRM / PowerShell Remoting
+      ├── tunnel.go      — SSH local port-forward for DB / WinRM (TunnelVia)
+      ├── mux.go         — Connection sharing: shared master, local SSH relay
       ├── hostkeys.go    — TOFU known_hosts management
       └── types.go       — Result type
 ```
@@ -448,7 +459,7 @@ Each build produces a unique binary hash — the passphrase path to existing vau
 
 ## Requirements
 
-- **Build:** Go 1.24+
+- **Build:** Go 1.26+
 - **Runtime:** None — single static binary, no external dependencies for any connection type
 
 ## License
