@@ -217,7 +217,7 @@ channels on it. The server sees one login, not one per call.
   client killed mid-command only loses its own channel.
 - **Failed logins are not retried:** if the master cannot log in, that error
   is returned as-is, so one call never costs the server two failed attempts.
-- **Socket security:** sockets live in `~/.secure-wrapper/mux/` (mode 0700),
+- **Socket security:** sockets live in `$XDG_RUNTIME_DIR/securewrapper/` (mode 0700, cleared at logout; `~/.secure-wrapper/mux/` on macOS or when there is no private runtime directory),
   and attaching requires a token derived from the stored credentials, so a
   same-user process without vault access cannot use an open master.
   Credentials go to the master over a pipe, never argv or the environment.

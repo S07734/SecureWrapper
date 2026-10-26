@@ -53,9 +53,32 @@ func muxSettings() (time.Duration, bool) {
 	return muxDefaultPersist, true
 }
 
+// muxDir holds the master sockets. They are runtime state, so they live in
+// the per-user runtime directory (tmpfs, cleared at logout) when there is a
+// trustworthy one, keeping them out of copies of ~/.secure-wrapper: socket
+// files break rsync to network shares. macOS has no XDG_RUNTIME_DIR and
+// falls back to the vault directory.
 func muxDir() string {
+	if rt := os.Getenv("XDG_RUNTIME_DIR"); rt != "" && privateDir(rt) {
+		return filepath.Join(rt, "securewrapper")
+	}
+	return legacyMuxDir()
+}
+
+func legacyMuxDir() string {
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".secure-wrapper", "mux")
+}
+
+// privateDir reports whether dir is a directory owned by this user that no
+// one else can write to.
+func privateDir(dir string) bool {
+	fi, err := os.Stat(dir)
+	if err != nil || !fi.IsDir() || fi.Mode().Perm()&0022 != 0 {
+		return false
+	}
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	return ok && int(st.Uid) == os.Getuid()
 }
 
 // muxSocketPath is short and fixed-length so it stays under the 104-byte
@@ -95,6 +118,20 @@ func enableMux(conn Connection) {
 	})
 }
 
+// cleanLegacyMuxDir removes the folder earlier versions kept sockets in,
+// once its masters have exited. A master still running keeps its socket and
+// lock, so the folder stays until a later call finds it idle.
+func cleanLegacyMuxDir() {
+	dir := legacyMuxDir()
+	locks, _ := filepath.Glob(filepath.Join(dir, "*.sock.lock"))
+	for _, lock := range locks {
+		if _, err := os.Stat(strings.TrimSuffix(lock, ".lock")); os.IsNotExist(err) {
+			os.Remove(lock)
+		}
+	}
+	os.Remove(dir) // fails while anything is left
+}
+
 // startMuxMaster launches a detached master. A per-socket flock keeps
 // concurrent callers from starting two masters for the same connection.
 func startMuxMaster(conn Connection, sock, token string, persist time.Duration) error {
@@ -103,6 +140,9 @@ func startMuxMaster(conn Connection, sock, token string, persist time.Duration) 
 	}
 	if err := os.Chmod(muxDir(), 0700); err != nil {
 		return err
+	}
+	if muxDir() != legacyMuxDir() {
+		cleanLegacyMuxDir()
 	}
 
 	lock, err := os.OpenFile(sock+".lock", os.O_CREATE|os.O_RDWR, 0600)

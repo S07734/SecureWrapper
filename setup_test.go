@@ -27,6 +27,8 @@ func TestMain(m *testing.M) {
 	os.Setenv("HOME", tmp)
 	// Windows CI: UserHomeDir reads USERPROFILE there.
 	os.Setenv("USERPROFILE", tmp)
+	// Mux sockets go in XDG_RUNTIME_DIR; keep them out of the real one.
+	os.Setenv("XDG_RUNTIME_DIR", tmp)
 	code := m.Run()
 	os.RemoveAll(tmp)
 	os.Exit(code)
