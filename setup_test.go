@@ -12,6 +12,13 @@ import (
 // production vault.enc. Do not remove this guard; any new test that needs
 // a different HOME should layer its own t.Setenv on top.
 func TestMain(m *testing.M) {
+	// The mux e2e test spawns this test binary as its detached master. It
+	// inherits the sandboxed HOME from the parent test process.
+	if len(os.Args) == 2 && os.Args[1] == "--mux-master" {
+		runMuxMaster()
+		return
+	}
+
 	tmp, err := os.MkdirTemp("", "securewrapper-test-home-*")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "cannot create sandbox HOME: %v\n", err)

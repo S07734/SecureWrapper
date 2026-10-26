@@ -68,7 +68,7 @@ func ExecuteSSHKey(host string, port int, username, keyPath, keyPassphrase strin
 func executeSSH(host string, port int, config *ssh.ClientConfig, passthroughArgs []string, command string) Result {
 	addr := fmt.Sprintf("%s:%d", host, port)
 
-	client, err := ssh.Dial("tcp", addr, config)
+	client, err := dialSSH(addr, config)
 	if err != nil {
 		return Result{Error: fmt.Errorf("SSH connection failed: %w", err)}
 	}
@@ -255,7 +255,7 @@ func executeSCP(host string, port int, config *ssh.ClientConfig, username string
 	// ":" prefix on an arg means remote path
 	addr := fmt.Sprintf("%s:%d", host, port)
 
-	client, err := ssh.Dial("tcp", addr, config)
+	client, err := dialSSH(addr, config)
 	if err != nil {
 		return Result{Error: fmt.Errorf("SSH connection failed: %w", err)}
 	}
@@ -413,7 +413,7 @@ func SSHProxy(host string, port int, username, password, keyPath, keyPassphrase,
 	}
 
 	addr := fmt.Sprintf("%s:%d", host, port)
-	client, err := ssh.Dial("tcp", addr, config)
+	client, err := dialSSH(addr, config)
 	if err != nil {
 		return Result{Error: fmt.Errorf("SSH connection failed: %w", err)}
 	}

@@ -55,7 +55,7 @@ func DialSSH(host string, port int, username, password, keyPath, keyPass string)
 	}
 
 	addr := fmt.Sprintf("%s:%d", host, port)
-	return ssh.Dial("tcp", addr, cfg)
+	return dialSSH(addr, cfg)
 }
 
 // OpenTunnel binds a local TCP listener on 127.0.0.1 (OS-chosen port) and

@@ -27,7 +27,7 @@ func ExecuteSFTP(host string, port int, username, password string, passthroughAr
 	}
 
 	addr := fmt.Sprintf("%s:%d", host, port)
-	client, err := ssh.Dial("tcp", addr, config)
+	client, err := dialSSH(addr, config)
 	if err != nil {
 		return Result{Error: fmt.Errorf("SSH connection failed: %w", err)}
 	}
@@ -138,7 +138,7 @@ func TestFTP(host string, port int, username, password string) error {
 	}
 
 	addr := fmt.Sprintf("%s:%d", host, port)
-	client, err := ssh.Dial("tcp", addr, config)
+	client, err := dialSSH(addr, config)
 	if err != nil {
 		return fmt.Errorf("connection failed: %w", err)
 	}

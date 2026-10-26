@@ -230,6 +230,7 @@ func resolveTunnel(vault *Vault, conn Connection) (string, int, func(), error) {
 		keyPass = tun.KeyPass
 	}
 
+	enableMux(*tun)
 	sshClient, err := connections.DialSSH(tun.Host, tun.Port, tun.Username, password, keyPath, keyPass)
 	if err != nil {
 		return "", 0, nil, fmt.Errorf("SSH tunnel dial (%s): %w", conn.TunnelVia, err)

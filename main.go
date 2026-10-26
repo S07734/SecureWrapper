@@ -84,6 +84,12 @@ func main() {
 		return
 	}
 
+	// Hidden: detached connection-sharing master, spawned by enableMux
+	if len(args) == 1 && args[0] == "--mux-master" {
+		runMuxMaster()
+		return
+	}
+
 	// Check for --sys flag (connection mode)
 	sysName, _ := extractFlag(args, "--sys")
 	if sysName != "" {
@@ -167,7 +173,7 @@ func cliFIDORestore() *Vault {
 }
 
 // Mode flags — the third wrapper flag that determines transport
-var modeFlagList = []string{"--ssh", "--scp", "--sftp", "--rsync", "--api", "--db", "--winrm", "--test", "--ssh-proxy", "--creds"}
+var modeFlagList = []string{"--ssh", "--scp", "--sftp", "--rsync", "--api", "--db", "--winrm", "--test", "--ssh-proxy", "--creds", "--mux-status", "--mux-stop"}
 
 func runConnection(args []string) {
 	// Parse the wrapper flags: --key, --key-file, --sys, --mode
@@ -264,6 +270,9 @@ func runConnection(args []string) {
 		os.Exit(1)
 	}
 
+	// Share one upstream SSH login across calls (ControlMaster equivalent)
+	enableMux(*conn)
+
 	// Execute based on mode
 	var result connections.Result
 
@@ -305,6 +314,10 @@ func runConnection(args []string) {
 	case "rsync":
 		// passthrough: [flags...] source dest
 		result = ExecuteConnectionRsync(*conn, passthrough)
+
+	case "mux-status", "mux-stop":
+		muxControl(*conn, mode)
+		return
 
 	case "creds":
 		// Output connection credentials as JSON — for other tools (MCP servers) to consume
