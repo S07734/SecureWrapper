@@ -44,6 +44,7 @@ SecureWrapper takes the opposite approach. **The vault never leaves your machine
 - **TOFU host key verification** — SSH connections verify host keys (Trust On First Use). Rejects changed keys.
 - **BBS-style TUI** — interactive vault management with a retro terminal interface
 - **In-app upgrades** — check for updates, download, verify checksum, migrate vault automatically
+- **Connection sharing** — SSH-based calls reuse one authenticated connection per profile (the native-client equivalent of OpenSSH ControlMaster), so bursts of calls don't trip fail2ban / rate limits on the server
 - **SSH tunneling** — DB and WinRM connections can be routed through any stored SSH connection (bastion / jumphost pattern) with one config field
 - **Hardware migration** — passphrase + one-time code export with 24-hour network-time-verified fuse, carries connections to a new machine
 - **Passphrase policy** — minimum length, character-class diversity, and common-password blocklist enforced at creation and rotation, with a live strength meter
@@ -96,6 +97,8 @@ WRAPPER_AUTH_KEY=swk_xxx ./wrapper --sys <name> --<mode> [passthrough args...]
 | `--db` | Run a SQL query (Postgres/MySQL/SQL Server) | `--db "SELECT version()"` |
 | `--winrm` | Run a PowerShell command against a Windows host | `--winrm "Get-Service wuauserv"` |
 | `--test` | Test connectivity | `--test` |
+| `--mux-status` | Is a shared SSH master running? | `--mux-status` |
+| `--mux-stop` | Retire the shared master (running calls finish) | `--mux-stop` |
 
 ### Examples
 
@@ -190,6 +193,30 @@ All three must match to decrypt the main vault. Auth key access uses 2-factor (a
 - Also offered at login when vault is incompatible with current binary
 - Vault wipe preserves backup files and known_hosts
 - **Important:** Portable backups are encrypted with 2 factors (no binary hash). Store them securely — anyone with the passphrase and access to the same machine can restore them. Delete old backups when no longer needed.
+
+### Connection Sharing
+
+Every SSH-based mode (`--ssh`, `--scp`, `--sftp`, `--rsync`, and SSH tunnels
+for DB / WinRM) shares one upstream login per connection profile. The first
+call starts a detached master process that holds the authenticated SSH
+connection; later calls attach to it over a unix socket and open their own
+channels on it. The server sees one login, not one per call.
+
+- **Idle lifetime:** 10 minutes after the last call (`WRAPPER_MUX_PERSIST=30m`
+  to change). The master also exits if the server drops the connection
+  (30-second keepalive).
+- **Opt out:** `WRAPPER_MUX=off` dials directly on every call.
+- **Self-healing:** a dead or stale master is replaced on the next call. A
+  client killed mid-command only loses its own channel.
+- **Failed logins are not retried:** if the master cannot log in, that error
+  is returned as-is, so one call never costs the server two failed attempts.
+- **Socket security:** sockets live in `~/.secure-wrapper/mux/` (mode 0700),
+  and attaching requires a token derived from the stored credentials, so a
+  same-user process without vault access cannot use an open master.
+  Credentials go to the master over a pipe, never argv or the environment.
+- **`--mux-stop`** removes the socket immediately; calls already running
+  finish, and the next call starts a fresh master.
+- **Platform:** Linux and macOS. On Windows every call dials directly.
 
 ### SSH Tunneling
 
