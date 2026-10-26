@@ -349,7 +349,15 @@ func (v *Vault) BackupVaultWithPassphrase() error {
 	}
 
 	backupPath := filepath.Join(filepath.Dir(vaultPath()), "vault.portable.backup")
-	return os.WriteFile(backupPath, out, 0600)
+	if err := os.WriteFile(backupPath, out, 0600); err != nil {
+		return err
+	}
+	// The portable backup needs no binary, but people back up by copying the
+	// whole vault directory, and vault.enc in that copy does.
+	if err := saveBackupBinary(); err != nil {
+		return fmt.Errorf("backup written, but saving the vault's binary failed: %w", err)
+	}
+	return nil
 }
 
 // WipeVault removes the vault and attempts file but preserves backups and known_hosts.

@@ -118,3 +118,22 @@ func TestWipeVaultPreservesSavedBinaries(t *testing.T) {
 		t.Fatal("wipe removed a saved binary")
 	}
 }
+
+// Config → Backup writes only the portable backup, but the vault directory it
+// leaves behind still needs the binary that opens vault.enc.
+func TestPortableBackupSavesRunningBinary(t *testing.T) {
+	os.RemoveAll(vaultDirPath())
+	v, err := CreateVault("test-passphrase-123")
+	if err != nil {
+		t.Fatalf("CreateVault: %v", err)
+	}
+	if err := v.BackupVaultWithPassphrase(); err != nil {
+		t.Fatalf("BackupVaultWithPassphrase: %v", err)
+	}
+	if _, err := os.Stat(backupBinaryPath(version, BinaryKeyFingerprint())); err != nil {
+		t.Fatalf("running binary not saved: %v", err)
+	}
+	if _, err := os.Stat(vaultPath() + ".backup"); !os.IsNotExist(err) {
+		t.Fatal("portable backup overwrote vault.enc.backup (the pre-upgrade raw copy)")
+	}
+}

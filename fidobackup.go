@@ -206,6 +206,11 @@ func (v *Vault) ExportFIDOBackup(password, pin string, prov fido2Provider, progr
 	if err := os.WriteFile(path, out, 0600); err != nil {
 		return "", fmt.Errorf("write FIDO2 backup: %w", err)
 	}
+	// Same reason as BackupVaultWithPassphrase: a copy of the vault directory
+	// should carry the binary that opens its vault.enc.
+	if err := saveBackupBinary(); err != nil {
+		return path, fmt.Errorf("backup written, but saving the vault's binary failed: %w", err)
+	}
 	return path, nil
 }
 
