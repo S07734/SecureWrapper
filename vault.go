@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"time"
 
 	"golang.org/x/crypto/argon2"
@@ -202,16 +203,96 @@ func CheckVaultCompatibilityAuthKey() (bool, string) {
 	return true, ""
 }
 
-// BackupVault creates two backups:
-//  1. Raw copy of vault.enc → vault.enc.backup (for same-binary restore)
-//  2. A 2-factor encrypted export → vault.backup (passphrase + machine only, no binary key)
-//     This can be restored by ANY binary on the same machine.
+// BackupVault copies vault.enc to vault.enc.backup and makes sure the binary
+// that opens it is saved beside it. A raw copy is bound to its binary's hash,
+// so it is only restorable together with that exact binary. (The portable
+// and FIDO2 backups are binary-independent.)
 func BackupVault() error {
 	if !VaultExists() {
 		return nil
 	}
-	// Raw copy for same-binary restore
-	return copyFile(vaultPath(), vaultPath()+".backup")
+	if err := copyFile(vaultPath(), vaultPath()+".backup"); err != nil {
+		return err
+	}
+	return saveBackupBinary()
+}
+
+// backupBinaryPath names a saved binary by version (for people) and binary
+// fingerprint, the same value every vault file records as header.binary_fp,
+// so any vault copy can be matched to its binary by name. Dev builds share a
+// version string; the fingerprint keeps them apart.
+func backupBinaryPath(ver, binaryFP string) string {
+	name := "wrapper-v" + ver + "-" + binaryFP + ".backup"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	return filepath.Join(vaultDirPath(), name)
+}
+
+// backupBinaries lists every saved binary in the vault directory.
+func backupBinaries() []string {
+	var out []string
+	for _, pattern := range []string{"wrapper-v*.backup", "wrapper-v*.backup.exe"} {
+		matches, _ := filepath.Glob(filepath.Join(vaultDirPath(), pattern))
+		out = append(out, matches...)
+	}
+	return out
+}
+
+// savedBinaryFor returns a saved binary whose content has this fingerprint.
+func savedBinaryFor(binaryFP string) string {
+	for _, p := range backupBinaries() {
+		if fp, err := binaryFileFingerprint(p); err == nil && fp == binaryFP {
+			return p
+		}
+	}
+	return ""
+}
+
+// saveBackupBinary saves the running binary when the vault being backed up
+// was written by it and no copy is saved yet. Saved binaries are never
+// removed: vault copies made elsewhere (other backups, off-machine archives)
+// may still need any of them, and the wrapper cannot see those copies.
+// A vault written by another build gets nothing added — that binary is not
+// available to save.
+func saveBackupBinary() error {
+	header := ReadVaultHeader()
+	if header == nil || header.BinaryFP != BinaryKeyFingerprint() {
+		return nil
+	}
+	if savedBinaryFor(header.BinaryFP) != "" {
+		return nil
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	if exe, err = filepath.EvalSymlinks(exe); err != nil {
+		return err
+	}
+	return copyFileAtomic(exe, backupBinaryPath(version, header.BinaryFP), 0700)
+}
+
+// copyFileAtomic writes via a temp file so an interrupted copy never leaves
+// a truncated binary in place of a good one.
+func copyFileAtomic(src, dst string, perm os.FileMode) error {
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return err
+	}
+	tmp := dst + ".tmp"
+	if err := os.WriteFile(tmp, data, perm); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmp, perm); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	if err := os.Rename(tmp, dst); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	return nil
 }
 
 // BackupVaultWithPassphrase creates a 2-factor backup that can be restored by any binary.
@@ -277,7 +358,7 @@ func WipeVault() {
 	os.Remove(attemptsFilePath())                                          // attempts
 	os.Remove(filepath.Join(filepath.Dir(vaultPath()), "vault.migration")) // migration file
 	os.Remove(filepath.Join(filepath.Dir(vaultPath()), "key_usage.json"))  // key usage
-	// Preserve: vault.enc.backup, known_hosts
+	// Preserve: vault.enc.backup + wrapper-v*.backup, known_hosts
 }
 
 // BackupExists checks if a vault backup file exists.

@@ -190,6 +190,7 @@ All three must match to decrypt the main vault. Auth key access uses 2-factor (a
 ### Backup & Restore
 - **Portable backup** — 2-factor encrypted (passphrase + machine fingerprint, no binary hash). Survives binary upgrades.
 - **Restore** — decrypts portable backup with passphrase, re-encrypts for current binary
+- **Raw backup + saved binary** — before an upgrade, restore, migration import or wipe, `vault.enc` is copied to `vault.enc.backup` and the binary that opens it is saved beside it as `wrapper-v<version>-<binary fingerprint>.backup`. A raw backup only decrypts with its exact binary. Every vault file records that fingerprint in plain text (`binary_fp` in its header), so any vault copy can be matched to its binary by name. Saved binaries are never deleted automatically, since copies kept elsewhere may still need them
 - Also offered at login when vault is incompatible with current binary
 - Vault wipe preserves backup files and known_hosts
 - **Important:** Portable backups are encrypted with 2 factors (no binary hash). Store them securely — anyone with the passphrase and access to the same machine can restore them. Delete old backups when no longer needed.

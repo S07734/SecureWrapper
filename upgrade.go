@@ -110,19 +110,16 @@ func upgradeScreen(vault *Vault) {
 		return
 	}
 
-	// Step 0: Backup the vault file before doing anything
+	// Step 0: Back up the vault with the binary that opens it, before doing anything
 	fmt.Println()
-	fmt.Print(dimStyle.Render("  Backing up vault... "))
-	backupPath := vaultPath() + ".backup"
-	if _, err := os.Stat(vaultPath()); err == nil {
-		if err := copyFile(vaultPath(), backupPath); err != nil {
-			fmt.Println()
-			printWarn(fmt.Sprintf("Backup failed: %v (continuing anyway)", err))
-		} else {
-			printSuccess(fmt.Sprintf("Saved to %s", backupPath))
-		}
-	} else {
+	fmt.Print(dimStyle.Render("  Backing up vault + binary... "))
+	if !VaultExists() {
 		printSuccess("No existing vault to backup")
+	} else if err := BackupVault(); err != nil {
+		fmt.Println()
+		printWarn(fmt.Sprintf("Backup failed: %v (continuing anyway)", err))
+	} else {
+		printSuccess(fmt.Sprintf("Saved %s + %s", filepath.Base(vaultPath()+".backup"), filepath.Base(backupBinaryPath(version, BinaryKeyFingerprint()))))
 	}
 
 	// Step 0b: Create portable backup (2-factor, survives any binary change)

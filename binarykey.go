@@ -61,3 +61,15 @@ func BinaryKeyFingerprint() string {
 	fp := sha256.Sum256(key)
 	return fmt.Sprintf("%x", fp[:8])
 }
+
+// binaryFileFingerprint is BinaryKeyFingerprint for a binary on disk, so a
+// saved binary can be matched against a vault header's binary_fp.
+func binaryFileFingerprint(path string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	key := sha256.Sum256(data)
+	fp := sha256.Sum256(key[:])
+	return fmt.Sprintf("%x", fp[:8]), nil
+}

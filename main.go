@@ -452,7 +452,7 @@ func runInteractive() {
 		}
 		fmt.Println()
 		printError("Importing the migration will OVERWRITE your current vault.")
-		fmt.Println(dimStyle.Render("  (A raw copy of your current vault will be saved to vault.enc.backup first.)"))
+		fmt.Println(dimStyle.Render("  (A raw copy of your current vault, with its binary, will be saved to vault.enc.backup first.)"))
 		fmt.Println()
 		choice := strings.ToUpper(printPrompt("(I)mport migration, (O)pen existing vault, (D)elete migration file, or (Q)uit?"))
 		switch choice {
