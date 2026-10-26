@@ -190,7 +190,7 @@ All three must match to decrypt the main vault. Auth key access uses 2-factor (a
 ### Backup & Restore
 - **Portable backup** — 2-factor encrypted (passphrase + machine fingerprint, no binary hash). Survives binary upgrades.
 - **Restore** — decrypts portable backup with passphrase, re-encrypts for current binary
-- **Raw backup + saved binary** — before an upgrade, restore, migration import or wipe, `vault.enc` is copied to `vault.enc.backup` and the binary that opens it is saved beside it as `wrapper-v<version>-<binary fingerprint>.backup`. A raw backup only decrypts with its exact binary. Every vault file records that fingerprint in plain text (`binary_fp` in its header), so any vault copy can be matched to its binary by name. Saved binaries are never deleted automatically, since copies kept elsewhere may still need them
+- **Raw backup + saved binary** — before an upgrade, restore, migration import or wipe, `vault.enc` is copied to `vault.enc.backup` and the binary that opens it is saved beside it as `wrapper-v<version>-<binary fingerprint>.backup`. A raw backup only decrypts with its exact binary. Every vault file records that fingerprint in plain text (`binary_fp` in its header), so any vault copy can be matched to its binary by name. Saved binaries are never deleted automatically, since copies kept elsewhere may still need them. The portable and FIDO2 backups also save the binary for the live `vault.enc`, so a copy of the whole vault folder always carries what it needs
 - Also offered at login when vault is incompatible with current binary
 - Vault wipe preserves backup files and known_hosts
 - **Important:** Portable backups are encrypted with 2 factors (no binary hash). Store them securely — anyone with the passphrase and access to the same machine can restore them. Delete old backups when no longer needed.
@@ -256,6 +256,7 @@ Enforced at vault creation and rotation (not at open, not at backup restore — 
 - Downloaded binary hash verified before replacement
 - Vault backed up before upgrade
 - Migration file encrypted, user prompted before deletion if stale
+- Refuses to start the update when it cannot write to the binary's folder, before any backup or export runs
 
 ### Threat Model
 
@@ -279,11 +280,15 @@ Enforced at vault creation and rotation (not at open, not at backup restore — 
 | Tampered migration expiry on disk | Expiry bound into AES-GCM AAD — tampering fails authentication |
 
 ### Recommended Deployment
+The in-app updater replaces the binary in place, so install it in a folder you own:
+
 ```bash
-# Owned by root, execute-only — callers can run it but can't read or copy it
-sudo chown root:root wrapper
-sudo chmod 711 wrapper
+install -m 700 wrapper ~/.local/bin/wrapper     # ~/.local/bin must be on PATH
 ```
+
+Don't run the wrapper with `sudo`: sudo switches to root's home folder, where your vault isn't. The wrapper detects this and exits with an explanation. If scripts call an absolute path such as `/usr/local/bin/wrapper`, make that path a symlink to the copy you own.
+
+For a shared, locked-down host where callers must not read or copy the binary, it can be root-owned and execute-only (`chown root:root`, `chmod 711`). Updates then have to be installed by hand, since the in-app updater cannot replace it.
 
 ## Docker Deployment
 

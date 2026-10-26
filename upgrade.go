@@ -105,6 +105,19 @@ func upgradeScreen(vault *Vault) {
 	fmt.Printf("  Binary: %s (%s)\n", connNameStyle.Render(assetName), dimStyle.Render(formatSize(assetSize)))
 	fmt.Println()
 
+	// Check before backups and migration export: a failure at the final
+	// rename would leave all of that work behind for nothing.
+	if exe, err := os.Executable(); err == nil {
+		if err := checkUpgradeWritable(exe); err != nil {
+			printError(fmt.Sprintf("Cannot update: %v.", err))
+			fmt.Println(dimStyle.Render("  Don't run the update with sudo: it would look for the vault in root's home."))
+			fmt.Println(dimStyle.Render("  Move the binary to a folder you own (e.g. ~/.local/bin, ahead of /usr/local/bin"))
+			fmt.Println(dimStyle.Render("  on PATH), symlink the old path to it if scripts use it, then update from there."))
+			pause()
+			return
+		}
+	}
+
 	confirm := printPrompt("Download and upgrade? (yes/no):")
 	if confirm != "yes" {
 		return

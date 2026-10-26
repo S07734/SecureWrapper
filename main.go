@@ -36,6 +36,8 @@ func main() {
 		return
 	}
 
+	checkNotSudo()
+
 	// Handle --show-fingerprint — print full fingerprint and exit (no vault needed)
 	if hasFlag(args, "--show-fingerprint") {
 		fp, err := MachineFingerprint()
